@@ -1,0 +1,307 @@
+[
+  {
+    "id": "luck_1",
+    "name": "Luck Potion I",
+    "price": 10000
+  },
+  {
+    "id": "luck_2",
+    "name": "Luck Potion II",
+    "price": 50000
+  },
+  {
+    "id": "luck_3",
+    "name": "Luck Potion III",
+    "price": 250000
+  },
+  {
+    "id": "luck_4",
+    "name": "Luck Potion IV",
+    "price": 1000000
+  },
+  {
+    "id": "luck_5",
+    "name": "Luck Potion V",
+    "price": 5000000
+  },
+  {
+    "id": "luck_6",
+    "name": "Luck Potion VI",
+    "price": 25000000
+  },
+  {
+    "id": "luck_7",
+    "name": "Luck Potion VII",
+    "price": 100000000
+  },
+  {
+    "id": "luck_8",
+    "name": "Luck Potion VIII",
+    "price": 250000000
+  },
+  {
+    "id": "luck_9",
+    "name": "Luck Potion IX",
+    "price": 1000000000
+  },
+  {
+    "id": "luck_10",
+    "name": "Luck Potion X",
+    "price": 5000000000
+  },
+  {
+    "id": "luck_11",
+    "name": "Luck Potion XI",
+    "price": 1000000000000
+  },
+  {
+    "id": "luck_12",
+    "name": "Luck Potion XII",
+    "price": 5000000000000
+  },
+  {
+    "id": "luck_13",
+    "name": "Luck Potion XIII",
+    "price": 300000000000000
+  },
+  {
+    "id": "luck_14",
+    "name": "Luck Potion XIV",
+    "price": 15000000000000000
+  },
+  {
+    "id": "luck_15",
+    "name": "Luck Potion XV",
+    "price": 1000000000000000000
+  },
+  {
+    "id": "decimal",
+    "name": "Decimal Potion",
+    "price": 1000000
+  },
+  {
+    "id": "negative",
+    "name": "Negative Potion",
+    "price": 2000000
+  },
+  {
+    "id": "complex",
+    "name": "Complex Potion",
+    "price": 25000000000
+  },
+  {
+    "id": "quaternion",
+    "name": "Quaternion Potion",
+    "price": 50000000000
+  },
+  {
+    "id": "rarity_aberration",
+    "name": "Aberration Potion",
+    "price": 200000000
+  },
+  {
+    "id": "rarity_otherworldly",
+    "name": "Otherworldly Potion",
+    "price": 500000000
+  },
+  {
+    "id": "rarity_cataclysmic",
+    "name": "Cataclysmic Potion",
+    "price": 2000000000
+  },
+  {
+    "id": "rarity_divine",
+    "name": "Divine Potion",
+    "price": 2500000000
+  },
+  {
+    "id": "rarity_transcendent",
+    "name": "Transcendent Potion",
+    "price": 8000000000
+  },
+  {
+    "id": "rarity_singularity",
+    "name": "Voidborne Potion",
+    "price": 50000000000
+  },
+  {
+    "id": "rarity_emperor",
+    "name": "Emperor Potion",
+    "price": 300000000000
+  },
+  {
+    "id": "rarity_alcubierre",
+    "name": "Alcubierre Potion",
+    "price": 3000000000000
+  },
+  {
+    "id": "rarity_eleutheria",
+    "name": "Eleutheria Potion",
+    "price": 10000000000000
+  },
+  {
+    "id": "rarity_true_singularity",
+    "name": "Singularity Potion",
+    "price": 25000000000000
+  },
+  {
+    "id": "rarity_goldweaver",
+    "name": "Goldweaver Potion",
+    "price": 175000000000000
+  },
+  {
+    "id": "category_negative",
+    "name": "Undertow",
+    "price": 700000
+  },
+  {
+    "id": "category_constant",
+    "name": "Still Point",
+    "price": 300000
+  },
+  {
+    "id": "category_decimal",
+    "name": "Fine Print",
+    "price": 250000
+  },
+  {
+    "id": "category_repeat",
+    "name": "Déjà Vu",
+    "price": 3500000
+  },
+  {
+    "id": "category_round",
+    "name": "Perfect Zero",
+    "price": 3000000
+  },
+  {
+    "id": "category_shape",
+    "name": "Cascade",
+    "price": 84000000000
+  },
+  {
+    "id": "category_symmetry",
+    "name": "Looking Glass",
+    "price": 120000000000
+  },
+  {
+    "id": "category_prime",
+    "name": "Lone Shard",
+    "price": 240000000000
+  },
+  {
+    "id": "category_size",
+    "name": "Drink Me",
+    "price": 400000000000
+  },
+  {
+    "id": "category_sequence",
+    "name": "Stepping Stones",
+    "price": 1000000
+  },
+  {
+    "id": "category_digits",
+    "name": "Odd & Even",
+    "price": 17000000
+  },
+  {
+    "id": "category_series",
+    "name": "Nautilus",
+    "price": 110000000000
+  },
+  {
+    "id": "category_power",
+    "name": "Lightning in a Bottle",
+    "price": 130000000000
+  },
+  {
+    "id": "category_meme",
+    "name": "Inside Joke",
+    "price": 3000000
+  },
+  {
+    "id": "category_googology",
+    "name": "Klein Bottle",
+    "price": 1100000000000
+  },
+  {
+    "id": "category_exact",
+    "name": "Bullseye",
+    "price": 2000000000000
+  },
+  {
+    "id": "category_element",
+    "name": "Absolute Zero",
+    "price": 2900000000000
+  },
+  {
+    "id": "category_prism",
+    "name": "Prism Potion",
+    "price": 340000000000
+  },
+  {
+    "id": "category_kaleidoscope",
+    "name": "Kaleidoscope Potion",
+    "price": 860000000000
+  },
+  {
+    "id": "category_periodic",
+    "name": "Periodic Table Potion",
+    "price": 30000000
+  },
+  {
+    "id": "dss",
+    "name": "Digit Splitter",
+    "price": 20000000
+  },
+  {
+    "id": "rss",
+    "name": "Roulette Splitter",
+    "price": 10000000
+  },
+  {
+    "id": "sss",
+    "name": "Slot Splitter",
+    "price": 15000000
+  },
+  {
+    "id": "digit_swap",
+    "name": "Digit Swap",
+    "price": 500000000
+  },
+  {
+    "id": "mirror",
+    "name": "Digit Mirror",
+    "price": 750000000
+  },
+  {
+    "id": "gravity",
+    "name": "Gravity Potion",
+    "price": 4000000000
+  },
+  {
+    "id": "grinder",
+    "name": "Grinder",
+    "price": 5000000000
+  },
+  {
+    "id": "edge",
+    "name": "Edge of Infinity",
+    "price": 20000000000
+  },
+  {
+    "id": "tour_ticket",
+    "name": "Tournament Ticket",
+    "price": 2000000000000
+  },
+  {
+    "id": "minigame",
+    "name": "Minigame Ticket",
+    "price": 50000000
+  },
+  {
+    "id": "coin",
+    "name": "Gold Coin",
+    "price": 10000000
+  }
+]

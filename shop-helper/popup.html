@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RNGidle auto-buy</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <div class="brand-mark" aria-hidden="true">R</div>
+        <div>
+          <h1>Store auto-buy</h1>
+          <p>Choose what to buy from the main store.</p>
+        </div>
+      </header>
+
+      <section class="status-panel panel" aria-labelledby="status-heading">
+        <h2 id="status-heading">Connection</h2>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-dot" id="signin-dot" aria-hidden="true"></span>
+            <span id="signin-status">Signed in: checking…</span>
+          </div>
+          <div class="status-item">
+            <span class="status-dot" id="tab-dot" aria-hidden="true"></span>
+            <span id="tab-status">Game tab: checking…</span>
+          </div>
+        </div>
+        <div class="run-summary">
+          <div>
+            <span class="eyebrow">Last check</span>
+            <strong id="last-check">Not checked yet</strong>
+          </div>
+          <span class="run-state" id="run-state" hidden></span>
+        </div>
+        <p class="run-message" id="run-message" hidden></p>
+      </section>
+
+      <section class="automation panel" aria-labelledby="automation-heading">
+        <div class="automation-row">
+          <div class="toggle-copy">
+            <h2 id="automation-heading">Automatic purchases</h2>
+            <p id="enabled-state">Paused</p>
+          </div>
+          <label class="switch" for="enabled">
+            <input id="enabled" type="checkbox" aria-label="Enable automatic purchases" disabled>
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <p class="warning"><strong>Heads up:</strong> EP is spent automatically when a selected item is available. Keep an RNGidle tab open and stay signed in.</p>
+      </section>
+
+      <section class="catalog-section" aria-labelledby="catalog-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="catalog-heading">Main-store items</h2>
+            <p>Set an up-to quantity per shop and choose when to buy.</p>
+          </div>
+          <span class="count-badge" id="selected-count">0 selected</span>
+        </div>
+        <label class="search-field" for="catalog-search">
+          <span class="visually-hidden">Search main-store items</span>
+          <span aria-hidden="true">⌕</span>
+          <input id="catalog-search" type="search" placeholder="Search items" autocomplete="off">
+        </label>
+        <p class="empty-state" id="catalog-message" role="status">Loading catalog…</p>
+        <div class="catalog-list" id="catalog-list" aria-live="polite"></div>
+        <div class="unavailable-list" id="unavailable-list" hidden>
+          <h3>Saved items not in this catalog</h3>
+          <div id="unavailable-items"></div>
+        </div>
+      </section>
+
+      <div class="save-row">
+        <p class="save-message" id="save-message" role="status" aria-live="polite">Changes are saved when you choose Save settings.</p>
+        <button class="save-button" id="save-button" type="button" disabled>Save settings</button>
+      </div>
+
+      <section class="activity-section panel" aria-labelledby="activity-heading">
+        <div class="section-heading compact-heading">
+          <div>
+            <h2 id="activity-heading">Recent activity</h2>
+          </div>
+        </div>
+        <p class="empty-state activity-empty" id="activity-empty">No recent activity yet.</p>
+        <ul class="activity-list" id="activity-list"></ul>
+      </section>
+
+      <footer class="footer">Changes take effect after saving. Pause purchases any time.</footer>
+    </main>
+  </body>
+</html>

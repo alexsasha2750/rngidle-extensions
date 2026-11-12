@@ -25,7 +25,7 @@ Settings, status, and purchase activity are stored locally in the browser. The e
 
 ## Checks
 
-Run `npm test` with Node.js to exercise the purchase planning and background flow using simulated responses; no live purchases are made by these tests. The live signed-in purchase endpoint has not been verified by these tests.
+Run `npm test` from the `shop-helper` folder with Node.js to exercise the purchase planning and background flow using simulated responses; no live purchases are made by these tests. The live signed-in purchase endpoint has not been verified by these tests.
 
 ## License and attribution
 

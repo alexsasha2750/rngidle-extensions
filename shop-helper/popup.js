@@ -1,11 +1,14 @@
 const state = {
   catalog: [],
+  blackCatalog: [],
   snapshot: {},
-  draft: { enabled: false, rules: [] },
-  saved: { enabled: false, rules: [] },
+  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket() },
+  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket() },
   ready: false,
   catalogLoaded: false,
+  blackCatalogLoaded: false,
   filter: "",
+  blackFilter: "",
   saving: false,
 };
 const priceFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
@@ -30,7 +33,59 @@ const elements = {
   saveButton: document.getElementById("save-button"),
   activityEmpty: document.getElementById("activity-empty"),
   activityList: document.getElementById("activity-list"),
+  blackMarketEnabled: document.getElementById("black-market-enabled"),
+  blackMarketMostExpensive: document.getElementById("black-market-most-expensive"),
+  blackMarketSelectedOnly: document.getElementById("black-market-selected-only"),
+  blackMarketMinimumEnabled: document.getElementById("black-market-minimum-enabled"),
+  blackMarketMinimumPrice: document.getElementById("black-market-minimum-price"),
+  blackMarketSelectionWarning: document.getElementById("black-market-selection-warning"),
+  blackMarketSearch: document.getElementById("black-market-search"),
+  blackMarketCatalogMessage: document.getElementById("black-market-catalog-message"),
+  blackMarketList: document.getElementById("black-market-list"),
+  blackMarketSelectedCount: document.getElementById("black-market-selected-count"),
+  blackMarketUnavailable: document.getElementById("black-market-unavailable"),
+  blackMarketUnavailableItems: document.getElementById("black-market-unavailable-items"),
+  blackMarketNoFiltersWarning: document.getElementById("black-market-no-filters-warning"),
+  blackMarketUncertainPanel: document.getElementById("black-market-uncertain-panel"),
+  clearBlackMarketUncertain: document.getElementById("clear-black-market-uncertain"),
+  blackMarketUncertainStatus: document.getElementById("black-market-uncertain-status"),
+  numberCheckerForm: document.getElementById("number-checker-form"),
+  numberCheckerInput: document.getElementById("number-checker-input"),
+  numberCheckerButton: document.getElementById("number-checker-button"),
+  numberCheckerResult: document.getElementById("number-checker-result"),
 };
+
+function defaultBlackMarket() {
+  return {
+    enabled: false,
+    mostExpensive: false,
+    selectedOnly: false,
+    itemIds: [],
+    minimumEnabled: false,
+    minimumPrice: 0,
+  };
+}
+
+function normalizeBlackMarket(value) {
+  const itemIds = [];
+  const seen = new Set();
+  for (const id of Array.isArray(value?.itemIds) ? value.itemIds : []) {
+    if (typeof id !== "string" && typeof id !== "number") continue;
+    const normalized = String(id);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    itemIds.push(normalized);
+  }
+  const minimumPrice = Number(value?.minimumPrice);
+  return {
+    enabled: value?.enabled === true,
+    mostExpensive: value?.mostExpensive === true,
+    selectedOnly: value?.selectedOnly === true,
+    itemIds,
+    minimumEnabled: value?.minimumEnabled === true,
+    minimumPrice: Number.isFinite(minimumPrice) && minimumPrice >= 0 ? minimumPrice : 0,
+  };
+}
 
 function normalizeSettings(value) {
   const rules = [];
@@ -53,7 +108,11 @@ function normalizeSettings(value) {
     });
   }
 
-  return { enabled: value?.enabled === true, rules };
+  return {
+    enabled: value?.enabled === true,
+    rules,
+    blackMarket: normalizeBlackMarket(value?.blackMarket),
+  };
 }
 
 function newUid(existing = []) {
@@ -69,6 +128,10 @@ function cloneSettings(settings) {
   return {
     enabled: settings.enabled,
     rules: settings.rules.map((rule) => ({ ...rule })),
+    blackMarket: {
+      ...settings.blackMarket,
+      itemIds: [...settings.blackMarket.itemIds],
+    },
   };
 }
 
@@ -79,6 +142,23 @@ function settingsChanged() {
 function updateSaveState() {
   const dirty = settingsChanged();
   elements.enabled.disabled = !state.ready || state.saving;
+  for (const control of [
+    elements.blackMarketEnabled,
+    elements.blackMarketMostExpensive,
+    elements.blackMarketSelectedOnly,
+    elements.blackMarketMinimumEnabled,
+    elements.blackMarketMinimumPrice,
+    elements.blackMarketSearch,
+  ]) {
+    control.disabled = !state.ready || state.saving;
+  }
+  for (const control of elements.blackMarketList.querySelectorAll("input, button")) {
+    control.disabled = !state.ready || state.saving;
+  }
+  for (const control of elements.blackMarketUnavailableItems.querySelectorAll("button")) {
+    control.disabled = !state.ready || state.saving;
+  }
+  elements.clearBlackMarketUncertain.disabled = !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
   elements.saveButton.disabled = !state.ready || state.saving || !dirty;
   elements.enabledState.textContent = state.draft.enabled ? "On · changes need saving" : "Paused · changes need saving";
   if (!dirty) {
@@ -152,7 +232,7 @@ function renderCatalog() {
       quantityLabel.className = "field-label";
       const quantityId = `quantity-${index}`;
       quantityLabel.htmlFor = quantityId;
-      addText(quantityLabel, "span", "", "Up to this many per shop");
+      addText(quantityLabel, "span", "", "Max per shop · up to 1,000");
       const quantity = document.createElement("input");
       quantity.id = quantityId;
       quantity.type = "number";
@@ -228,6 +308,123 @@ function renderCatalog() {
   const count = state.draft.rules.length;
   elements.selectedCount.textContent = `${count} selected`;
   updateSaveState();
+}
+
+function renderBlackCatalog() {
+  elements.blackMarketList.replaceChildren();
+  elements.blackMarketUnavailableItems.replaceChildren();
+  const query = state.blackFilter.trim().toLocaleLowerCase();
+  const filtered = state.blackCatalog.filter((item) =>
+    `${item.name} ${item.id}`.toLocaleLowerCase().includes(query),
+  );
+  elements.blackMarketCatalogMessage.hidden = filtered.length > 0;
+  if (!state.blackCatalogLoaded) {
+    elements.blackMarketCatalogMessage.textContent = "Black Market catalog could not be loaded.";
+  } else if (filtered.length === 0) {
+    elements.blackMarketCatalogMessage.textContent = query ? "No matching items." : "No Black Market items are available.";
+  }
+
+  const selectedIds = new Set(state.draft.blackMarket.itemIds);
+  for (const item of filtered) {
+    const label = document.createElement("label");
+    label.className = "black-market-item";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selectedIds.has(item.id);
+    checkbox.dataset.action = "select-black-item";
+    checkbox.dataset.itemId = item.id;
+    checkbox.setAttribute("aria-label", `Select ${item.name} for Black Market purchases`);
+    label.append(checkbox);
+    addText(label, "span", "black-item-name", item.name);
+    if (item.price !== undefined && item.price !== null && item.price !== "") {
+      const price = Number(item.price);
+      if (Number.isFinite(price)) addText(label, "span", "black-item-price", `Guide: ${priceFormatter.format(price)} EP`);
+    }
+    elements.blackMarketList.append(label);
+  }
+
+  const catalogIds = new Set(state.blackCatalog.map((item) => item.id));
+  const unavailable = state.draft.blackMarket.itemIds.filter((id) => !catalogIds.has(id));
+  elements.blackMarketUnavailable.hidden = unavailable.length === 0;
+  for (const id of unavailable) {
+    const row = document.createElement("div");
+    row.className = "unavailable-item";
+    addText(row, "span", "", `Saved selection ${id} · not in the Black Market catalog`);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "remove-button";
+    remove.textContent = "Remove";
+    remove.dataset.action = "remove-black-item";
+    remove.dataset.itemId = id;
+    remove.setAttribute("aria-label", `Remove saved Black Market selection ${id}`);
+    row.append(remove);
+    elements.blackMarketUnavailableItems.append(row);
+  }
+  elements.blackMarketSelectedCount.textContent = `${selectedIds.size} selected`;
+  elements.blackMarketSelectionWarning.hidden = !state.draft.blackMarket.selectedOnly || selectedIds.size > 0;
+  updateSaveState();
+}
+
+function renderBlackMarket() {
+  const settings = state.draft.blackMarket;
+  elements.blackMarketEnabled.checked = settings.enabled;
+  elements.blackMarketMostExpensive.checked = settings.mostExpensive;
+  elements.blackMarketSelectedOnly.checked = settings.selectedOnly;
+  elements.blackMarketMinimumEnabled.checked = settings.minimumEnabled;
+  elements.blackMarketMinimumPrice.value = Number.isFinite(settings.minimumPrice) ? String(settings.minimumPrice) : "";
+  elements.blackMarketNoFiltersWarning.hidden = settings.mostExpensive || settings.selectedOnly || settings.minimumEnabled;
+  renderBlackCatalog();
+  renderBlackMarketRecovery();
+}
+
+function uncertainBlackMarketKeys(progress) {
+  if (!progress || typeof progress !== "object" || Array.isArray(progress)) return [];
+  return Object.entries(progress)
+    .filter(([key, entry]) => key.startsWith("blackMarket:") && key !== "blackMarket:deal" && entry?.status === "uncertain")
+    .map(([key]) => key);
+}
+
+function renderBlackMarketRecovery() {
+  elements.blackMarketUncertainPanel.hidden = uncertainBlackMarketKeys(state.snapshot.progress).length === 0;
+  elements.clearBlackMarketUncertain.disabled = !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
+}
+
+async function requestBlackMarketUncertaintyClear() {
+  if (!state.ready || state.saving || state.saved.enabled || state.draft.enabled) {
+    elements.blackMarketUncertainStatus.hidden = false;
+    elements.blackMarketUncertainStatus.textContent = "Pause global Automatic purchases and save settings before continuing.";
+    return;
+  }
+  if (!window.confirm("Check your inventory first. Clear only uncertain Black Market item entries? The market-wide deal guard will be kept.")) return;
+
+  const button = elements.clearBlackMarketUncertain;
+  button.disabled = true;
+  elements.blackMarketUncertainStatus.hidden = false;
+  elements.blackMarketUncertainStatus.textContent = "Asking the background service to clear uncertain Black Market results…";
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "CLEAR_BLACK_MARKET_UNCERTAINTY" });
+    if (!response || typeof response !== "object") {
+      elements.blackMarketUncertainStatus.textContent = "The background service did not return a result. Try again.";
+    } else if (response.ok !== true) {
+      elements.blackMarketUncertainStatus.textContent = typeof response.error === "string" && response.error
+        ? response.error
+        : "Could not clear uncertain Black Market results. Try again.";
+    } else {
+      const result = response.result && typeof response.result === "object" ? response.result : response;
+      if (typeof result.message === "string" && result.message) {
+        elements.blackMarketUncertainStatus.textContent = result.message;
+      } else if (Number.isSafeInteger(result.cleared) && result.cleared >= 0) {
+        elements.blackMarketUncertainStatus.textContent = `Cleared ${result.cleared} uncertain Black Market ${result.cleared === 1 ? "entry" : "entries"}.`;
+      } else {
+        elements.blackMarketUncertainStatus.textContent = "The background service completed the uncertainty-clear request.";
+      }
+    }
+  } catch {
+    elements.blackMarketUncertainStatus.textContent = "Could not reach the background service. Try again.";
+  } finally {
+    renderBlackMarketRecovery();
+    updateSaveState();
+  }
 }
 
 function setProgressText(node, progress, rule) {
@@ -334,11 +531,151 @@ function markDirty(message = "Unsaved changes. Save to apply them.") {
   updateSaveState();
 }
 
+function checkerText(container, className, text) {
+  return addText(container, "span", className, text);
+}
+
+function displayCheckerMessage(className, message) {
+  elements.numberCheckerResult.replaceChildren();
+  addText(elements.numberCheckerResult, "p", className, message);
+}
+
+function displayNumberResult(result) {
+  elements.numberCheckerResult.replaceChildren();
+  const summary = document.createElement("div");
+  summary.className = "checker-summary";
+  addText(summary, "span", "checker-result-label", "Canonical number");
+  addText(summary, "strong", "checker-number", String(result.number ?? "—"));
+  addText(summary, "span", "checker-score-label", "Total score");
+  const totalScore = result.totalScore;
+  const scoreText = typeof totalScore === "number" && Number.isFinite(totalScore)
+    ? `${priceFormatter.format(totalScore)} EP`
+    : `${String(totalScore ?? "—")} EP`;
+  addText(summary, "strong", "checker-score", scoreText);
+  elements.numberCheckerResult.append(summary);
+
+  const badges = Array.isArray(result.badges) ? result.badges : [];
+  const badgeHeading = addText(elements.numberCheckerResult, "h3", "checker-badges-heading", "Badges");
+  badgeHeading.id = "number-checker-badges-heading";
+  if (badges.length === 0) {
+    addText(elements.numberCheckerResult, "p", "checker-no-badges", "No badges returned for this number.");
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "checker-badges";
+  list.setAttribute("aria-labelledby", badgeHeading.id);
+  for (const badge of badges) {
+    const row = document.createElement("li");
+    row.className = "checker-badge";
+    const name = [badge?.emoji, badge?.label].filter((value) => value !== undefined && value !== null && String(value)).map(String).join(" ");
+    addText(row, "span", "checker-badge-name", name || String(badge?.id ?? "Badge"));
+    if (badge?.isScoring === false) {
+      addText(row, "span", "checker-nonscoring", "Doesn’t score");
+    } else {
+      if (badge?.score !== undefined && badge.score !== null) {
+        const numericScore = Number(badge.score);
+        const scoreText = Number.isFinite(numericScore) ? priceFormatter.format(numericScore) : String(badge.score);
+        checkerText(row, "checker-badge-score", `${scoreText} EP`);
+      }
+      if (badge?.multiplier !== undefined && badge.multiplier !== null) {
+        checkerText(row, "checker-badge-multiplier", `×${String(badge.multiplier)}`);
+      }
+    }
+    list.append(row);
+  }
+  elements.numberCheckerResult.append(list);
+}
+
+async function checkNumber(event) {
+  event.preventDefault();
+  const number = elements.numberCheckerInput.value.trim();
+  if (!number) {
+    displayCheckerMessage("checker-error", "Enter a number or expression to check.");
+    elements.numberCheckerInput.focus();
+    return;
+  }
+
+  elements.numberCheckerButton.disabled = true;
+  elements.numberCheckerResult.setAttribute("aria-busy", "true");
+  displayCheckerMessage("checker-loading", "Checking preview…");
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "CHECK_NUMBER", number });
+    if (!response || response.ok !== true) {
+      displayCheckerMessage("checker-error", response?.error || "Could not check that value. Try another number or expression.");
+    } else if (!response.result || typeof response.result !== "object") {
+      displayCheckerMessage("checker-error", "The number checker returned an incomplete result. Try again.");
+    } else {
+      displayNumberResult(response.result);
+    }
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+    displayCheckerMessage("checker-error", `Could not reach the number checker. Make sure an RNGidle tab is open, then try again${detail}`);
+  } finally {
+    elements.numberCheckerButton.disabled = false;
+    elements.numberCheckerResult.removeAttribute("aria-busy");
+  }
+}
+
 function bindEvents() {
+  elements.numberCheckerForm.addEventListener("submit", checkNumber);
+
   elements.enabled.addEventListener("change", () => {
     state.draft.enabled = elements.enabled.checked;
     markDirty();
   });
+
+  elements.blackMarketEnabled.addEventListener("change", () => {
+    state.draft.blackMarket.enabled = elements.blackMarketEnabled.checked;
+    markDirty();
+  });
+
+  const syncBlackMarketFilters = () => {
+    state.draft.blackMarket.mostExpensive = elements.blackMarketMostExpensive.checked;
+    state.draft.blackMarket.selectedOnly = elements.blackMarketSelectedOnly.checked;
+    state.draft.blackMarket.minimumEnabled = elements.blackMarketMinimumEnabled.checked;
+    elements.blackMarketNoFiltersWarning.hidden = state.draft.blackMarket.mostExpensive ||
+      state.draft.blackMarket.selectedOnly || state.draft.blackMarket.minimumEnabled;
+    renderBlackCatalog();
+    markDirty();
+  };
+  elements.blackMarketMostExpensive.addEventListener("change", syncBlackMarketFilters);
+  elements.blackMarketSelectedOnly.addEventListener("change", syncBlackMarketFilters);
+  elements.blackMarketMinimumEnabled.addEventListener("change", syncBlackMarketFilters);
+
+  elements.blackMarketMinimumPrice.addEventListener("input", () => {
+    const value = elements.blackMarketMinimumPrice.value;
+    state.draft.blackMarket.minimumPrice = value === "" ? "" : Number(value);
+    markDirty();
+  });
+
+  elements.blackMarketSearch.addEventListener("input", () => {
+    state.blackFilter = elements.blackMarketSearch.value;
+    renderBlackCatalog();
+  });
+
+  elements.blackMarketList.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.dataset.action !== "select-black-item") return;
+    const itemId = target.dataset.itemId;
+    if (!itemId) return;
+    const selected = new Set(state.draft.blackMarket.itemIds);
+    if (target.checked) selected.add(itemId);
+    else selected.delete(itemId);
+    state.draft.blackMarket.itemIds = [...selected];
+    markDirty();
+    renderBlackCatalog();
+  });
+
+  elements.blackMarketUnavailableItems.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || target.dataset.action !== "remove-black-item") return;
+    state.draft.blackMarket.itemIds = state.draft.blackMarket.itemIds.filter((id) => id !== target.dataset.itemId);
+    markDirty();
+    renderBlackCatalog();
+  });
+
+  elements.clearBlackMarketUncertain.addEventListener("click", requestBlackMarketUncertaintyClear);
 
   elements.catalogSearch.addEventListener("input", () => {
     state.filter = elements.catalogSearch.value;
@@ -353,7 +690,7 @@ function bindEvents() {
       const itemId = target.dataset.itemId;
       if (target instanceof HTMLInputElement && itemId) {
         if (target.checked && !getRule(itemId)) {
-          state.draft.rules.push({ uid: newUid(state.draft.rules.map((rule) => rule.uid)), id: itemId, quantity: 1, mode: "once" });
+          state.draft.rules.push({ uid: newUid(state.draft.rules.map((rule) => rule.uid)), id: itemId, quantity: 1000, mode: "once" });
         } else if (!target.checked) {
           state.draft.rules = state.draft.rules.filter((rule) => rule.id !== itemId);
         }
@@ -431,6 +768,24 @@ function loadCatalog() {
       const id = String(item.id);
       if (!items.has(id)) items.set(id, { id, name: String(item.name), price: item.price });
     }
+    items.set("bundle", { id: "bundle", name: "Any bundle", price: null });
+    return [...items.values()];
+  });
+}
+
+function loadBlackCatalog() {
+  return fetch(chrome.runtime.getURL("black-catalog.json")).then((response) => {
+    if (!response.ok) throw new Error("Black Market catalog fetch failed");
+    return response.json();
+  }).then((catalog) => {
+    if (!Array.isArray(catalog)) throw new Error("Black Market catalog is not a list");
+    const items = new Map();
+    for (const item of catalog) {
+      if (!item || item.id === undefined || item.id === null || item.name === undefined || item.name === null) continue;
+      const id = String(item.id);
+      if (!id || items.has(id)) continue;
+      items.set(id, { id, name: String(item.name), price: item.price });
+    }
     return [...items.values()];
   });
 }
@@ -450,6 +805,11 @@ function validateSettings() {
       return "Choose a purchase rule for every selected item.";
     }
   }
+  const minimumPrice = state.draft.blackMarket.minimumPrice;
+  if (state.draft.blackMarket.minimumEnabled &&
+    (typeof minimumPrice !== "number" || !Number.isFinite(minimumPrice) || minimumPrice < 0)) {
+    return "Enter a valid minimum item price of 0 EP or more.";
+  }
   return "";
 }
 
@@ -468,6 +828,16 @@ async function saveSettings() {
       quantity: rule.quantity,
       mode: rule.mode,
     })),
+    blackMarket: {
+      enabled: state.draft.blackMarket.enabled,
+      mostExpensive: state.draft.blackMarket.mostExpensive,
+      selectedOnly: state.draft.blackMarket.selectedOnly,
+      itemIds: [...new Set(state.draft.blackMarket.itemIds)],
+      minimumEnabled: state.draft.blackMarket.minimumEnabled,
+      minimumPrice: Number.isFinite(state.draft.blackMarket.minimumPrice) && state.draft.blackMarket.minimumPrice >= 0
+        ? state.draft.blackMarket.minimumPrice
+        : 0,
+    },
   };
   state.saving = true;
   elements.saveMessage.textContent = "Saving…";
@@ -488,6 +858,7 @@ async function saveSettings() {
     elements.saveMessage.textContent = "Settings saved.";
     updateSaveState();
     renderCatalog();
+    renderBlackMarket();
 
     try {
       const response = chrome.runtime.sendMessage({ type: "SETTINGS_CHANGED" });
@@ -516,19 +887,27 @@ function handleStorageChanges(changes, areaName) {
     state.draft = cloneSettings(state.saved);
     elements.enabled.checked = state.draft.enabled;
     renderCatalog();
+    renderBlackMarket();
   } else if (settingsUpdated) {
     elements.saveMessage.textContent = "Settings changed elsewhere; your unsaved edits are still here.";
   }
 
   renderStatus();
-  if ("progress" in changes) renderProgress();
+  if ("progress" in changes) {
+    renderProgress();
+    renderBlackMarketRecovery();
+  }
   if ("activity" in changes) renderActivity();
 }
 
 async function initialize() {
   bindEvents();
   chrome.storage.onChanged.addListener(handleStorageChanges);
-  const [storageResult, catalogResult] = await Promise.allSettled([readStorage(), loadCatalog()]);
+  const [storageResult, catalogResult, blackCatalogResult] = await Promise.allSettled([
+    readStorage(),
+    loadCatalog(),
+    loadBlackCatalog(),
+  ]);
 
   if (storageResult.status === "fulfilled") {
     state.snapshot = storageResult.value;
@@ -547,8 +926,16 @@ async function initialize() {
     state.catalogLoaded = false;
   }
 
+  if (blackCatalogResult.status === "fulfilled") {
+    state.blackCatalog = blackCatalogResult.value;
+    state.blackCatalogLoaded = true;
+  } else {
+    state.blackCatalogLoaded = false;
+  }
+
   renderStatus();
   renderCatalog();
+  renderBlackMarket();
   renderActivity();
   updateSaveState();
 }

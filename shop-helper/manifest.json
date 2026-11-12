@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "RNGidle Shop Helper",
   "version": "1.0.0",
+  "version_name": "v1-alpha",
   "description": "Automatically buy selected Glim shop items while RNGidle is open.",
   "minimum_chrome_version": "120",
   "permissions": ["alarms", "storage"],

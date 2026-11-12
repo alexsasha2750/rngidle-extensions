@@ -6,10 +6,11 @@ A Chrome extension for selecting items from Glim's main shop and automatically b
 
 ## Install
 
-1. Open `chrome://extensions` in Chrome 120 or later.
-2. Turn on **Developer mode**, choose **Load unpacked**, and select the `shop-helper` folder.
-3. Open and sign in to `https://rngidle.fun/`. Keep a game tab open, but you can visit another page within the game.
-4. Open the extension, select one or more items, set quantities and modes, enable automatic purchases, and save.
+1. Download the extension ZIP from the [Releases page](https://github.com/alexsasha2750/rngidle-extensions/releases) and extract it. Alternatively, clone or download this repository.
+2. Open `chrome://extensions` in Chrome 120 or later and turn on **Developer mode**.
+3. Choose **Load unpacked** and select the extracted `shop-helper` folder, which contains `manifest.json`.
+4. Open and sign in to `https://rngidle.fun/`. Keep a game tab open, but you can visit another page within the game.
+5. Open the extension from Chrome's Extensions menu, select one or more items, set quantities and modes, enable automatic purchases, and save.
 
 The extension starts paused. It checks about once a minute while Chrome is running; it does not work after the game tab or Chrome is closed. A check is also triggered when a game tab opens or settings are saved. The game server remains responsible for purchases and can reject them.
 

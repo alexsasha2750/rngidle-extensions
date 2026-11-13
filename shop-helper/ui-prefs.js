@@ -10,6 +10,8 @@ export function normalizeUiPrefs(value) {
   return {
     theme: THEMES.includes(value?.theme) ? value.theme : 'auto',
     compact: value?.compact === true,
+    // Switches off the game's screen-distorting effects while Glitch is around.
+    calmGlitch: value?.calmGlitch === true,
     // How the player wants to be told.
     channels: {
       desktop: value?.channels?.desktop === true,

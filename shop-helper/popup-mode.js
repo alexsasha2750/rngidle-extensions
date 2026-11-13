@@ -9,6 +9,7 @@
   const clean = (value) => ({
     theme: value?.theme === "light" || value?.theme === "dark" ? value.theme : "auto",
     compact: value?.compact === true,
+    calmGlitch: value?.calmGlitch === true,
   });
   let look = clean(null);
   try { look = clean(JSON.parse(localStorage.getItem(CACHE_KEY))); } catch { /* first run */ }
@@ -16,6 +17,7 @@
   function apply() {
     root.dataset.theme = look.theme === "auto" ? (light.matches ? "light" : "dark") : look.theme;
     root.dataset.compact = String(look.compact);
+    root.dataset.calm = String(look.calmGlitch);
   }
   function take(prefs) {
     look = clean(prefs);

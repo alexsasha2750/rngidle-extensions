@@ -5,7 +5,7 @@ import { send } from './popup-format.js';
 
 const $ = id => document.getElementById(id);
 const el = {
-  theme: $('theme-choice'), compact: $('compact-toggle'),
+  theme: $('theme-choice'), compact: $('compact-toggle'), calm: $('calm-glitch'),
   desktop: $('chan-desktop'), sound: $('chan-sound'), flash: $('chan-flash'), volume: $('sound-volume'),
   testSound: $('test-sound'), testNotify: $('test-notify'),
   eventGlitch: $('event-glitch'), eventPurchase: $('event-purchase'), eventBlack: $('event-black'),
@@ -16,6 +16,7 @@ const el = {
 function render(p) {
   for (const radio of el.theme.querySelectorAll('input[type="radio"]')) radio.checked = radio.value === p.theme;
   el.compact.checked = p.compact;
+  el.calm.checked = p.calmGlitch;
   el.desktop.checked = p.channels.desktop;
   el.sound.checked = p.channels.sound;
   el.flash.checked = p.channels.titleFlash;
@@ -32,6 +33,7 @@ el.theme.addEventListener('change', event => {
   if (event.target instanceof HTMLInputElement && event.target.name === 'theme') void savePrefs({ theme: event.target.value });
 });
 el.compact.addEventListener('change', () => void savePrefs({ compact: el.compact.checked }));
+el.calm.addEventListener('change', () => void savePrefs({ calmGlitch: el.calm.checked }));
 el.desktop.addEventListener('change', () => void savePrefs({ channels: { desktop: el.desktop.checked } }));
 el.sound.addEventListener('change', () => {
   void savePrefs({ channels: { sound: el.sound.checked } });

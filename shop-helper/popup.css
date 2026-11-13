@@ -804,3 +804,6 @@ html[data-theme="light"] .btn-ghost:hover:not(:disabled) { background: rgba(var(
 html[data-theme="light"] .btn-warn { background: rgba(183, 121, 31, 0.12); border-color: rgba(183, 121, 31, 0.45); }
 html[data-theme="light"] .btn-danger { color: #fff; }
 .glitch-ware .item-name { font-size: 13px; }
+
+/* Calm mode also stills the menu's own flicker on the Glitch tab. */
+html[data-calm="true"] .glitch-state { animation: none !important; }

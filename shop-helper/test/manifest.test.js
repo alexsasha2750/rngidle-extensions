@@ -63,7 +63,7 @@ test('the menu never uses blocking dialogs or HTML injection', () => {
 });
 
 test('sound and notifications are wired without widening access', () => {
-  assert.deepEqual(manifest.content_scripts[0].js, ['sound.js', 'content.js', 'overlay.js'], 'sound.js must load before the overlay uses it');
+  assert.deepEqual(manifest.content_scripts[0].js, ['sound.js', 'calm.js', 'content.js', 'overlay.js'], 'sound.js must load before the overlay uses it');
   assert.ok(manifest.permissions.includes('notifications'));
   assert.deepEqual(manifest.host_permissions, ['https://rngidle.fun/*']);
   assert.ok(read('popup.html').includes('src="sound.js"'), 'the menu plays its own cues');

@@ -10,6 +10,7 @@ const state = {
   filter: "",
   blackFilter: "",
   saving: false,
+  justAdded: null,
 };
 const priceFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 
@@ -49,6 +50,10 @@ const elements = {
   blackMarketUncertainPanel: document.getElementById("black-market-uncertain-panel"),
   clearBlackMarketUncertain: document.getElementById("clear-black-market-uncertain"),
   blackMarketUncertainStatus: document.getElementById("black-market-uncertain-status"),
+  clearConfirm: document.getElementById("clear-confirm"),
+  clearConfirmYes: document.getElementById("clear-confirm-yes"),
+  clearConfirmNo: document.getElementById("clear-confirm-no"),
+  saveRow: document.querySelector(".save-row"),
   numberCheckerForm: document.getElementById("number-checker-form"),
   numberCheckerInput: document.getElementById("number-checker-input"),
   numberCheckerButton: document.getElementById("number-checker-button"),
@@ -160,6 +165,7 @@ function updateSaveState() {
   }
   elements.clearBlackMarketUncertain.disabled = !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
   elements.saveButton.disabled = !state.ready || state.saving || !dirty;
+  elements.saveRow.dataset.dirty = String(dirty);
   elements.enabledState.textContent = state.draft.enabled ? "On · changes need saving" : "Paused · changes need saving";
   if (!dirty) {
     elements.enabledState.textContent = state.saved.enabled ? "On" : "Paused";
@@ -227,14 +233,16 @@ function renderCatalog() {
     if (rule) {
       const controls = document.createElement("div");
       controls.className = "item-controls";
+      if (state.justAdded === item.id) controls.classList.add("enter");
 
       const quantityLabel = document.createElement("label");
       quantityLabel.className = "field-label";
       const quantityId = `quantity-${index}`;
       quantityLabel.htmlFor = quantityId;
-      addText(quantityLabel, "span", "", "Max per shop · up to 1,000");
+      addText(quantityLabel, "span", "", "Max per shop");
       const quantity = document.createElement("input");
       quantity.id = quantityId;
+      quantity.title = "A whole number from 1 to 1,000";
       quantity.type = "number";
       quantity.min = "1";
       quantity.max = "1000";
@@ -305,6 +313,7 @@ function renderCatalog() {
     elements.unavailableItems.append(row);
   }
 
+  state.justAdded = null;
   const count = state.draft.rules.length;
   elements.selectedCount.textContent = `${count} selected`;
   updateSaveState();
@@ -387,15 +396,38 @@ function uncertainBlackMarketKeys(progress) {
 function renderBlackMarketRecovery() {
   elements.blackMarketUncertainPanel.hidden = uncertainBlackMarketKeys(state.snapshot.progress).length === 0;
   elements.clearBlackMarketUncertain.disabled = !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
+  if (elements.blackMarketUncertainPanel.hidden || elements.clearBlackMarketUncertain.disabled) {
+    elements.clearConfirm.hidden = true;
+  }
 }
 
-async function requestBlackMarketUncertaintyClear() {
-  if (!state.ready || state.saving || state.saved.enabled || state.draft.enabled) {
+function cannotClearUncertainNow() {
+  return !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
+}
+
+// The game page blocks window.confirm() inside the in-game panel, so confirm inline.
+function askToClearBlackMarketUncertainty() {
+  if (cannotClearUncertainNow()) {
     elements.blackMarketUncertainStatus.hidden = false;
     elements.blackMarketUncertainStatus.textContent = "Pause global Automatic purchases and save settings before continuing.";
     return;
   }
-  if (!window.confirm("Check your inventory first. Clear only uncertain Black Market item entries? The market-wide deal guard will be kept.")) return;
+  elements.clearConfirm.hidden = false;
+  elements.clearConfirmNo.focus();
+}
+
+function cancelClearBlackMarketUncertainty() {
+  elements.clearConfirm.hidden = true;
+  elements.clearBlackMarketUncertain.focus();
+}
+
+async function requestBlackMarketUncertaintyClear() {
+  elements.clearConfirm.hidden = true;
+  if (cannotClearUncertainNow()) {
+    elements.blackMarketUncertainStatus.hidden = false;
+    elements.blackMarketUncertainStatus.textContent = "Pause global Automatic purchases and save settings before continuing.";
+    return;
+  }
 
   const button = elements.clearBlackMarketUncertain;
   button.disabled = true;
@@ -526,9 +558,23 @@ function renderActivity() {
   elements.activityEmpty.hidden = elements.activityList.childElementCount > 0;
 }
 
-function markDirty(message = "Unsaved changes. Save to apply them.") {
+function markDirty(message = "Unsaved changes") {
   elements.saveMessage.textContent = message;
   updateSaveState();
+}
+
+const compactFormatter = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 2 });
+
+function formatEPValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value ?? "—");
+  return Math.abs(number) >= 1e21 ? number.toExponential(3) : priceFormatter.format(number);
+}
+
+function compactEPValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || Math.abs(number) >= 1e21) return "";
+  return Math.abs(number) >= 1e15 ? number.toExponential(2) : compactFormatter.format(number);
 }
 
 function checkerText(container, className, text) {
@@ -541,42 +587,56 @@ function displayCheckerMessage(className, message) {
 }
 
 function displayNumberResult(result) {
-  elements.numberCheckerResult.replaceChildren();
+  const container = elements.numberCheckerResult;
+  container.replaceChildren();
+
   const summary = document.createElement("div");
   summary.className = "checker-summary";
-  addText(summary, "span", "checker-result-label", "Canonical number");
-  addText(summary, "strong", "checker-number", String(result.number ?? "—"));
-  addText(summary, "span", "checker-score-label", "Total score");
-  const totalScore = result.totalScore;
-  const scoreText = typeof totalScore === "number" && Number.isFinite(totalScore)
-    ? `${priceFormatter.format(totalScore)} EP`
-    : `${String(totalScore ?? "—")} EP`;
-  addText(summary, "strong", "checker-score", scoreText);
-  elements.numberCheckerResult.append(summary);
+  const numberBlock = document.createElement("div");
+  numberBlock.className = "checker-number-block";
+  addText(numberBlock, "span", "checker-result-label", "Number");
+  addText(numberBlock, "strong", "checker-number", String(result.number ?? "—"));
+  summary.append(numberBlock);
+
+  const scoreBlock = document.createElement("div");
+  scoreBlock.className = "checker-score-block";
+  addText(scoreBlock, "span", "checker-score-label", "Total score");
+  addText(scoreBlock, "strong", "checker-score", `${formatEPValue(result.totalScore)} EP`);
+  const compact = compactEPValue(result.totalScore);
+  if (compact) addText(scoreBlock, "span", "checker-score-compact", `≈ ${compact} EP`);
+  summary.append(scoreBlock);
+  container.append(summary);
 
   const badges = Array.isArray(result.badges) ? result.badges : [];
-  const badgeHeading = addText(elements.numberCheckerResult, "h3", "checker-badges-heading", "Badges");
+  const scoringCount = badges.filter((badge) => badge?.isScoring !== false).length;
+  const head = document.createElement("div");
+  head.className = "checker-badges-head";
+  const badgeHeading = addText(head, "h3", "checker-badges-heading", "Badges");
   badgeHeading.id = "number-checker-badges-heading";
+  addText(head, "span", "count-badge", `${badges.length} found · ${scoringCount} score`);
+  container.append(head);
+
   if (badges.length === 0) {
-    addText(elements.numberCheckerResult, "p", "checker-no-badges", "No badges returned for this number.");
+    addText(container, "p", "checker-no-badges", "No badges returned for this number.");
     return;
   }
 
   const list = document.createElement("ul");
   list.className = "checker-badges";
   list.setAttribute("aria-labelledby", badgeHeading.id);
-  for (const badge of badges) {
+  for (const [index, badge] of badges.entries()) {
     const row = document.createElement("li");
     row.className = "checker-badge";
+    row.style.setProperty("--i", String(index));
     const name = [badge?.emoji, badge?.label].filter((value) => value !== undefined && value !== null && String(value)).map(String).join(" ");
     addText(row, "span", "checker-badge-name", name || String(badge?.id ?? "Badge"));
     if (badge?.isScoring === false) {
+      row.classList.add("is-muted");
       addText(row, "span", "checker-nonscoring", "Doesn’t score");
     } else {
+      row.classList.add("is-scoring");
       if (badge?.score !== undefined && badge.score !== null) {
-        const numericScore = Number(badge.score);
-        const scoreText = Number.isFinite(numericScore) ? priceFormatter.format(numericScore) : String(badge.score);
-        checkerText(row, "checker-badge-score", `${scoreText} EP`);
+        checkerText(row, "checker-badge-score", `${formatEPValue(badge.score)} EP`);
       }
       if (badge?.multiplier !== undefined && badge.multiplier !== null) {
         checkerText(row, "checker-badge-multiplier", `×${String(badge.multiplier)}`);
@@ -584,7 +644,7 @@ function displayNumberResult(result) {
     }
     list.append(row);
   }
-  elements.numberCheckerResult.append(list);
+  container.append(list);
 }
 
 async function checkNumber(event) {
@@ -597,6 +657,7 @@ async function checkNumber(event) {
   }
 
   elements.numberCheckerButton.disabled = true;
+  elements.numberCheckerButton.classList.add("is-busy");
   elements.numberCheckerResult.setAttribute("aria-busy", "true");
   displayCheckerMessage("checker-loading", "Checking preview…");
   try {
@@ -607,12 +668,15 @@ async function checkNumber(event) {
       displayCheckerMessage("checker-error", "The number checker returned an incomplete result. Try again.");
     } else {
       displayNumberResult(response.result);
+      // On short screens the score can land below the fold; bring it into view.
+      elements.numberCheckerResult.querySelector(".checker-summary")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   } catch (error) {
     const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
     displayCheckerMessage("checker-error", `Could not reach the number checker. Make sure an RNGidle tab is open, then try again${detail}`);
   } finally {
     elements.numberCheckerButton.disabled = false;
+    elements.numberCheckerButton.classList.remove("is-busy");
     elements.numberCheckerResult.removeAttribute("aria-busy");
   }
 }
@@ -675,7 +739,9 @@ function bindEvents() {
     renderBlackCatalog();
   });
 
-  elements.clearBlackMarketUncertain.addEventListener("click", requestBlackMarketUncertaintyClear);
+  elements.clearBlackMarketUncertain.addEventListener("click", askToClearBlackMarketUncertainty);
+  elements.clearConfirmYes.addEventListener("click", requestBlackMarketUncertaintyClear);
+  elements.clearConfirmNo.addEventListener("click", cancelClearBlackMarketUncertainty);
 
   elements.catalogSearch.addEventListener("input", () => {
     state.filter = elements.catalogSearch.value;
@@ -691,6 +757,7 @@ function bindEvents() {
       if (target instanceof HTMLInputElement && itemId) {
         if (target.checked && !getRule(itemId)) {
           state.draft.rules.push({ uid: newUid(state.draft.rules.map((rule) => rule.uid)), id: itemId, quantity: 1000, mode: "once" });
+          state.justAdded = itemId;
         } else if (!target.checked) {
           state.draft.rules = state.draft.rules.filter((rule) => rule.id !== itemId);
         }

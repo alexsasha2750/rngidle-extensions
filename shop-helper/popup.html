@@ -1,182 +1,261 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-mode="popup">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RNGidle auto-buy</title>
+    <meta name="color-scheme" content="dark">
+    <title>RNGidle Shop Helper</title>
+    <script src="popup-mode.js"></script>
     <link rel="stylesheet" href="popup.css">
     <script src="popup.js" defer></script>
+    <script src="popup-ui.js" defer></script>
   </head>
   <body>
     <main class="app">
       <header class="header">
-        <div class="brand-mark" aria-hidden="true"><span>R</span></div>
-        <div class="brand-copy">
-          <span class="brand-kicker">RNGIDLE · SHOP COMPANION</span>
-          <h1>Store auto-buy</h1>
-          <p>Build a shopping plan for your next restock.</p>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 128 128" width="34" height="34"><use href="#logo"></use></svg>
+          </span>
+          <div class="brand-copy">
+            <h1>Shop Helper</h1>
+            <p>for RNGidle</p>
+          </div>
         </div>
-        <span class="header-spark" aria-hidden="true">✦</span>
+        <span class="version-pill" id="app-version" title="Extension version">v…</span>
+        <button class="icon-button hide-button" id="hide-panel" type="button" aria-label="Hide menu" title="Hide menu (Esc)" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
       </header>
 
-      <section class="status-panel panel" aria-labelledby="status-heading">
-        <h2 id="status-heading">Connection</h2>
-        <div class="status-grid">
-          <div class="status-item">
-            <span class="status-dot" id="signin-dot" aria-hidden="true"></span>
-            <span id="signin-status">Signed in: checking…</span>
-          </div>
-          <div class="status-item">
-            <span class="status-dot" id="tab-dot" aria-hidden="true"></span>
-            <span id="tab-status">Game tab: checking…</span>
-          </div>
-        </div>
-        <div class="run-summary">
-          <div>
-            <span class="eyebrow">Last check</span>
-            <strong id="last-check">Not checked yet</strong>
-          </div>
-          <span class="run-state" id="run-state" hidden></span>
-        </div>
-        <p class="run-message" id="run-message" hidden></p>
-      </section>
+      <nav class="tabs" role="tablist" aria-label="Sections" data-index="0">
+        <span class="tab-thumb" aria-hidden="true"></span>
+        <button class="tab" id="tab-autobuy" type="button" role="tab" aria-selected="true" aria-controls="panel-autobuy" data-tab="autobuy">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M3 4h2l2.2 10.2a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.76L19.5 8H6.2"></path><circle cx="9.5" cy="19" r="1.4"></circle><circle cx="17" cy="19" r="1.4"></circle></svg>
+          <span>Auto-buy</span>
+        </button>
+        <button class="tab" id="tab-checker" type="button" role="tab" aria-selected="false" aria-controls="panel-checker" data-tab="checker" tabindex="-1">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M9 4 7 20M17 4l-2 16M4 9h16M3.5 15h16"></path></svg>
+          <span>Number checker</span>
+        </button>
+      </nav>
 
-      <section class="automation panel" aria-labelledby="automation-heading">
-        <div class="automation-row">
-          <div class="toggle-copy">
-            <h2 id="automation-heading">Automatic purchases</h2>
-            <p id="enabled-state">Paused</p>
+      <div class="viewport">
+        <!-- ============ Auto-buy ============ -->
+        <section class="tab-panel is-active" id="panel-autobuy" role="tabpanel" aria-labelledby="tab-autobuy">
+          <div class="stack">
+            <section class="card master" aria-labelledby="automation-heading">
+              <div class="switch-row">
+                <div class="switch-copy">
+                  <div class="switch-title">
+                    <h2 id="automation-heading">Automatic purchases</h2>
+                    <span class="run-state" id="run-state" hidden></span>
+                  </div>
+                  <p id="enabled-state">Paused</p>
+                </div>
+                <label class="switch" for="enabled">
+                  <input id="enabled" type="checkbox" aria-label="Enable automatic purchases" disabled>
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+              </div>
+              <div class="chips status-chips" role="group" aria-label="Connection">
+                <span class="chip"><span class="status-dot" id="signin-dot" aria-hidden="true"></span><span id="signin-status">Signed in: checking…</span></span>
+                <span class="chip"><span class="status-dot" id="tab-dot" aria-hidden="true"></span><span id="tab-status">Game tab: checking…</span></span>
+              </div>
+              <p class="run-message" id="run-message" hidden></p>
+              <p class="meta">Last check · <strong id="last-check">Not checked yet</strong></p>
+              <p class="notice notice-warn notice-inline"><strong>Spends EP automatically</strong> while an RNGidle tab is open and you are signed in.</p>
+            </section>
+
+            <div class="subtabs" role="tablist" aria-label="Shops" data-index="0">
+              <span class="tab-thumb" aria-hidden="true"></span>
+              <button class="tab" id="subtab-glim" type="button" role="tab" aria-selected="true" aria-controls="subpanel-glim" data-tab="glim">Glim’s shop</button>
+              <button class="tab" id="subtab-black" type="button" role="tab" aria-selected="false" aria-controls="subpanel-black" data-tab="black" tabindex="-1">Black Market</button>
+            </div>
+
+            <!-- Glim's shop -->
+            <section class="subpanel is-active" id="subpanel-glim" role="tabpanel" aria-labelledby="subtab-glim">
+              <div class="section-head">
+                <div>
+                  <h2 id="catalog-heading">Main-store items</h2>
+                  <p>Pick items and bundles. New picks buy the max per shop.</p>
+                </div>
+                <span class="count-badge" id="selected-count">0 selected</span>
+              </div>
+              <label class="search-field" for="catalog-search">
+                <span class="visually-hidden">Search main-store items</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+                <input id="catalog-search" type="search" placeholder="Search items" autocomplete="off">
+              </label>
+              <p class="empty-state" id="catalog-message" role="status">Loading catalog…</p>
+              <div class="catalog-list" id="catalog-list" aria-live="polite"></div>
+              <div class="unavailable-list" id="unavailable-list" hidden>
+                <h3>Saved items not in this catalog</h3>
+                <div id="unavailable-items"></div>
+              </div>
+            </section>
+
+            <!-- Black Market -->
+            <section class="subpanel" id="subpanel-black" role="tabpanel" aria-labelledby="subtab-black" hidden>
+              <section class="card master" aria-labelledby="black-market-heading">
+                <div class="switch-row">
+                  <div class="switch-copy">
+                    <h2 id="black-market-heading">Black Market</h2>
+                    <p>Also needs the main Automatic purchases switch.</p>
+                  </div>
+                  <label class="switch" for="black-market-enabled">
+                    <input id="black-market-enabled" type="checkbox" aria-label="Enable Black Market automatic purchases" disabled>
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </label>
+                </div>
+                <p class="notice notice-warn notice-inline"><strong>EP can be spent</strong> when both switches are on.</p>
+                <p class="notice notice-info" id="black-market-no-filters-warning" role="note" hidden><strong>No filters checked</strong><span>With Black Market automation on, any affordable offer may be bought.</span></p>
+              </section>
+
+              <div class="section-head">
+                <div>
+                  <h2>Filters</h2>
+                  <p>All active filters apply together. “Most expensive” is the highest-priced offer on the whole shelf, even if it is unavailable or unaffordable.</p>
+                </div>
+              </div>
+              <div class="black-filters">
+                <label class="filter-option" for="black-market-most-expensive">
+                  <input id="black-market-most-expensive" type="checkbox" disabled>
+                  <span><strong>Most expensive offer</strong><small>Use the shelf’s highest-priced offer, regardless of availability or affordability.</small></span>
+                </label>
+                <label class="filter-option" for="black-market-selected-only">
+                  <input id="black-market-selected-only" type="checkbox" disabled>
+                  <span><strong>Only selected items</strong><small>Limit purchases to the items picked below.</small></span>
+                </label>
+                <p class="notice notice-info" id="black-market-selection-warning" role="status" hidden><strong>No items selected</strong><span>With this filter on, nothing is bought until you pick an item.</span></p>
+                <label class="filter-option minimum-option" for="black-market-minimum-enabled">
+                  <input id="black-market-minimum-enabled" type="checkbox" disabled>
+                  <span><strong>Minimum item price</strong><small>Inclusive live offer-price threshold. It does not check your remaining EP.</small></span>
+                </label>
+                <label class="field-label minimum-price-label" for="black-market-minimum-price">
+                  <span>Minimum price (EP)</span>
+                  <input id="black-market-minimum-price" type="number" min="0" step="0.01" inputmode="decimal" value="0" aria-label="Minimum Black Market item price in EP" disabled>
+                </label>
+              </div>
+
+              <div class="section-head">
+                <div>
+                  <h2>Items</h2>
+                  <p>Search and pick one or more. Catalog prices are guides only.</p>
+                </div>
+                <span class="count-badge" id="black-market-selected-count">0 selected</span>
+              </div>
+              <label class="search-field black-search" for="black-market-search">
+                <span class="visually-hidden">Search Black Market items</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+                <input id="black-market-search" type="search" placeholder="Search Black Market items" autocomplete="off" disabled>
+              </label>
+              <p class="empty-state" id="black-market-catalog-message" role="status">Loading Black Market catalog…</p>
+              <div class="black-market-list" id="black-market-list" aria-live="polite"></div>
+              <div class="unavailable-list black-unavailable" id="black-market-unavailable" hidden>
+                <h3>Saved selections not in this catalog</h3>
+                <div id="black-market-unavailable-items"></div>
+              </div>
+              <div class="uncertain-market" id="black-market-uncertain-panel" hidden>
+                <p>Some Black Market purchase results are uncertain. Check your inventory first. Pause Automatic purchases and save before clearing their retry protection.</p>
+                <button class="btn btn-warn" id="clear-black-market-uncertain" type="button" disabled>Clear uncertain Black Market items</button>
+                <div class="confirm-inline" id="clear-confirm" role="alertdialog" aria-label="Confirm clearing uncertain items" hidden>
+                  <span>Did you check your inventory? Only uncertain item entries are cleared; the market-wide deal guard stays.</span>
+                  <div class="confirm-actions">
+                    <button class="btn btn-danger" id="clear-confirm-yes" type="button">Yes, clear them</button>
+                    <button class="btn btn-ghost" id="clear-confirm-no" type="button">Cancel</button>
+                  </div>
+                </div>
+              </div>
+              <p class="uncertain-market-status" id="black-market-uncertain-status" role="status" aria-live="polite" hidden></p>
+            </section>
+
+            <details class="card activity-card" id="activity-card">
+              <summary><span>Recent activity</span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary>
+              <section class="activity-section" aria-labelledby="activity-heading">
+                <h2 class="visually-hidden" id="activity-heading">Recent activity</h2>
+                <p class="empty-state activity-empty" id="activity-empty">No recent activity yet.</p>
+                <ul class="activity-list" id="activity-list"></ul>
+              </section>
+            </details>
           </div>
-          <label class="switch" for="enabled">
-            <input id="enabled" type="checkbox" aria-label="Enable automatic purchases" disabled>
-            <span class="switch-track" aria-hidden="true"></span>
-          </label>
-        </div>
-        <p class="warning"><strong>Heads up</strong><span>EP is spent automatically when a selected item is available. Keep an RNGidle tab open and stay signed in.</span></p>
-      </section>
 
-      <section class="catalog-section" aria-labelledby="catalog-heading">
-        <div class="section-heading">
-          <div>
-            <h2 id="catalog-heading">Main-store items</h2>
-            <p>Set a maximum per shop and choose when to buy.</p>
+          <div class="save-row" data-dirty="false">
+            <p class="save-message" id="save-message" role="status" aria-live="polite">No unsaved changes</p>
+            <button class="btn btn-primary save-button" id="save-button" type="button" disabled>Save settings</button>
           </div>
-          <span class="count-badge" id="selected-count">0 selected</span>
-        </div>
-        <label class="search-field" for="catalog-search">
-          <span class="visually-hidden">Search main-store items</span>
-          <span aria-hidden="true">⌕</span>
-          <input id="catalog-search" type="search" placeholder="Search items" autocomplete="off">
-        </label>
-        <p class="empty-state" id="catalog-message" role="status">Loading catalog…</p>
-        <div class="catalog-list" id="catalog-list" aria-live="polite"></div>
-        <div class="unavailable-list" id="unavailable-list" hidden>
-          <h3>Saved items not in this catalog</h3>
-          <div id="unavailable-items"></div>
-        </div>
-      </section>
+        </section>
 
-      <section class="black-market panel" aria-labelledby="black-market-heading">
-        <div class="automation-row black-market-heading">
-          <div class="toggle-copy">
-            <span class="market-kicker">ADDITIONAL FILTERS</span>
-            <h2 id="black-market-heading">Black Market</h2>
-            <p>Requires the global Automatic purchases switch above.</p>
+        <!-- ============ Number checker ============ -->
+        <section class="tab-panel" id="panel-checker" role="tabpanel" aria-labelledby="tab-checker" hidden>
+          <div class="stack">
+            <section class="card hero" aria-labelledby="number-checker-heading">
+              <div class="hero-head">
+                <span class="hero-mark" aria-hidden="true">ƒ</span>
+                <div>
+                  <h2 id="number-checker-heading">Number checker</h2>
+                  <p>See the badges and EP a number would earn.</p>
+                </div>
+              </div>
+              <form id="number-checker-form" class="checker-form" novalidate>
+                <label class="visually-hidden" for="number-checker-input">Number or expression</label>
+                <div class="input-row">
+                  <input id="number-checker-input" type="text" maxlength="250" autocomplete="off" spellcheck="false" placeholder="Try 123, -12.5, 3+4i …" aria-describedby="number-checker-examples number-checker-help">
+                  <button class="btn btn-primary checker-button" id="number-checker-button" type="submit"><span class="btn-label">Check</span><span class="spinner" aria-hidden="true"></span></button>
+                </div>
+              </form>
+              <div class="examples" id="number-checker-examples">
+                <span class="examples-label">Examples</span>
+                <button class="chip chip-button" type="button" data-example="123">123</button>
+                <button class="chip chip-button" type="button" data-example="-12.5">-12.5</button>
+                <button class="chip chip-button" type="button" data-example="3+4i">3+4i</button>
+                <button class="chip chip-button" type="button" data-example="1+2i+3j+4k">1+2i+3j+4k</button>
+                <button class="chip chip-button" type="button" data-example="∅">∅</button>
+                <button class="chip chip-button" type="button" data-example="NaN">NaN</button>
+              </div>
+              <p class="visually-hidden" id="number-checker-help">Enter up to 250 characters. Checking only previews the result and does not roll or earn EP.</p>
+              <p class="fine-print">Preview only · no roll, no EP earned · needs an open RNGidle tab</p>
+            </section>
+
+            <section class="checker-result" id="number-checker-result" role="status" aria-live="polite" aria-atomic="true">
+              <div class="checker-placeholder">
+                <span class="placeholder-mark" aria-hidden="true">#</span>
+                <p>Enter a value, or tap an example, to preview its score and badges.</p>
+              </div>
+            </section>
           </div>
-          <label class="switch" for="black-market-enabled">
-            <input id="black-market-enabled" type="checkbox" aria-label="Enable Black Market automatic purchases" disabled>
-            <span class="switch-track" aria-hidden="true"></span>
-          </label>
-        </div>
-        <p class="black-market-warning"><strong>EP can be spent</strong><span>Purchases run only when both the global Automatic purchases switch above and this Black Market switch are on.</span></p>
-        <p class="black-market-no-filters" id="black-market-no-filters-warning" role="note" hidden>No filters checked: if Black Market automation is enabled, any affordable offer may be bought.</p>
-        <p class="filter-intro">All active filters apply together. “Most expensive” means the highest-priced offer on the whole shelf, even if it is unavailable or unaffordable.</p>
-
-        <div class="black-filters">
-          <label class="filter-option" for="black-market-most-expensive">
-            <input id="black-market-most-expensive" type="checkbox" disabled>
-            <span><strong>Most expensive offer</strong><small>Use the whole shelf’s highest-priced offer, regardless of availability or affordability.</small></span>
-          </label>
-          <label class="filter-option" for="black-market-selected-only">
-            <input id="black-market-selected-only" type="checkbox" disabled>
-            <span><strong>Only selected items</strong><small>Limit purchases to the items below.</small></span>
-          </label>
-          <p class="selection-warning" id="black-market-selection-warning" role="status" hidden>No items selected. With this filter on, nothing will be bought until you select an item.</p>
-          <label class="filter-option minimum-option" for="black-market-minimum-enabled">
-            <input id="black-market-minimum-enabled" type="checkbox" disabled>
-            <span><strong>Minimum item price</strong><small>Inclusive live offer-price threshold; it does not check your remaining EP.</small></span>
-          </label>
-          <label class="field-label minimum-price-label" for="black-market-minimum-price">
-            <span>Minimum price (EP)</span>
-            <input id="black-market-minimum-price" type="number" min="0" step="0.01" inputmode="decimal" value="0" aria-label="Minimum Black Market item price in EP" disabled>
-          </label>
-        </div>
-
-        <div class="black-catalog-heading">
-          <div>
-            <h3>Selected items</h3>
-            <p>Use search to add one or more items. Catalog prices are guides only.</p>
-          </div>
-          <span class="count-badge" id="black-market-selected-count">0 selected</span>
-        </div>
-        <label class="search-field black-search" for="black-market-search">
-          <span class="visually-hidden">Search Black Market items</span>
-          <span aria-hidden="true">⌕</span>
-          <input id="black-market-search" type="search" placeholder="Search Black Market items" autocomplete="off" disabled>
-        </label>
-        <p class="empty-state" id="black-market-catalog-message" role="status">Loading Black Market catalog…</p>
-        <div class="black-market-list" id="black-market-list" aria-live="polite"></div>
-        <div class="unavailable-list black-unavailable" id="black-market-unavailable" hidden>
-          <h3>Saved selections not in this catalog</h3>
-          <div id="black-market-unavailable-items"></div>
-        </div>
-        <div class="uncertain-market" id="black-market-uncertain-panel" hidden>
-          <p>Some Black Market purchase results are uncertain. Check your inventory first. Pause global Automatic purchases above and save settings before clearing their retry protection.</p>
-          <button class="clear-uncertain-button" id="clear-black-market-uncertain" type="button" disabled>Clear uncertain Black Market items</button>
-        </div>
-        <p class="uncertain-market-status" id="black-market-uncertain-status" role="status" aria-live="polite" hidden></p>
-      </section>
-
-      <section class="number-checker panel" aria-labelledby="number-checker-heading">
-        <div class="checker-heading">
-          <div>
-            <span class="checker-kicker">PREVIEW ONLY</span>
-            <h2 id="number-checker-heading">Number Checker</h2>
-            <p>Preview a number’s score and badges before deciding.</p>
-          </div>
-          <span class="checker-mark" aria-hidden="true">ƒ</span>
-        </div>
-        <p class="checker-warning"><strong>No rolls, no EP earned.</strong> This is a preview only; an open RNGidle tab is required.</p>
-        <form id="number-checker-form" class="checker-form" novalidate>
-          <label class="field-label checker-label" for="number-checker-input">
-            <span>Number or expression</span>
-            <input id="number-checker-input" type="text" maxlength="250" autocomplete="off" spellcheck="false" placeholder="Enter a number or expression" aria-describedby="number-checker-examples number-checker-help">
-          </label>
-          <button class="checker-button" id="number-checker-button" type="submit">Check number</button>
-        </form>
-        <p class="checker-examples" id="number-checker-examples">Examples: <code>123</code>, <code>-12.5</code>, <code>3+4i</code>, <code>1+2i+3j+4k</code>, <code>∅</code>, <code>NaN</code></p>
-        <p class="visually-hidden" id="number-checker-help">Enter up to 250 characters. Checking only previews the result and does not roll or earn EP.</p>
-        <div class="checker-result" id="number-checker-result" role="status" aria-live="polite" aria-atomic="true">
-          <p class="checker-placeholder">Enter a value and choose Check number to preview its score and badges.</p>
-        </div>
-      </section>
-
-      <div class="save-row">
-        <p class="save-message" id="save-message" role="status" aria-live="polite">Changes are saved when you choose Save settings.</p>
-        <button class="save-button" id="save-button" type="button" disabled>Save settings</button>
+        </section>
       </div>
 
-      <section class="activity-section panel" aria-labelledby="activity-heading">
-        <div class="section-heading compact-heading">
-          <div>
-            <h2 id="activity-heading">Recent activity</h2>
-          </div>
-        </div>
-        <p class="empty-state activity-empty" id="activity-empty">No recent activity yet.</p>
-        <ul class="activity-list" id="activity-list"></ul>
-      </section>
-
-      <footer class="footer">Changes take effect after saving. Pause purchases any time.</footer>
+      <footer class="footer">
+        <span class="footer-note">Menu on rngidle.fun</span>
+        <label class="mini-switch" for="launcher-toggle">
+          <input id="launcher-toggle" type="checkbox" aria-describedby="launcher-help" checked>
+          <span class="mini-track" aria-hidden="true"></span>
+          <span>In-game button</span>
+        </label>
+        <span class="visually-hidden" id="launcher-help">Shows or hides the floating button that opens this menu on rngidle.fun. Turn it off and reopen the menu from the toolbar icon.</span>
+      </footer>
     </main>
+
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="logo-gradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8b6cff"></stop>
+          <stop offset="1" stop-color="#38bdf8"></stop>
+        </linearGradient>
+        <symbol id="logo" viewBox="0 0 128 128">
+          <rect width="128" height="128" rx="30" fill="url(#logo-gradient)"></rect>
+          <g transform="rotate(-9 64 64)">
+            <rect x="29" y="29" width="70" height="70" rx="17" fill="#fff"></rect>
+            <circle cx="47" cy="47" r="6.5" fill="#5b43d6"></circle>
+            <circle cx="81" cy="47" r="6.5" fill="#5b43d6"></circle>
+            <circle cx="64" cy="64" r="6.5" fill="#5b43d6"></circle>
+            <circle cx="47" cy="81" r="6.5" fill="#5b43d6"></circle>
+            <circle cx="81" cy="81" r="6.5" fill="#5b43d6"></circle>
+          </g>
+        </symbol>
+      </defs>
+    </svg>
   </body>
 </html>

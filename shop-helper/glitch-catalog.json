@@ -1,0 +1,9 @@
+[
+  { "id": "bitflip", "name": "Function Error", "emoji": "⚠️" },
+  { "id": "overflow", "name": "Inventory Overflow", "emoji": "🗃️" },
+  { "id": "joke_anomaly", "name": "Amolony Potion", "emoji": "🧿" },
+  { "id": "joke_unral", "name": "Unral Potion", "emoji": "🫧" },
+  { "id": "joke_cataclysmic", "name": "Ctalysmic Potion", "emoji": "💥" },
+  { "id": "glitch", "name": "Glitch Potion", "emoji": "👾" },
+  { "id": "quaternion", "name": "Quaternion Potion", "emoji": "🧊" }
+]

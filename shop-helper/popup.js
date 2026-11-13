@@ -1,15 +1,20 @@
+import { defaultBundle, fromLegacyRule, normalizeBundle } from "./bundle.js";
+import { createBundlePanel } from "./popup-bundle.js";
+import { normalizeRarity, rarityPill, rarityTitle, setRarity } from "./popup-rarity.js";
+
 const state = {
   catalog: [],
   blackCatalog: [],
   snapshot: {},
-  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket() },
-  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket() },
+  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), bundle: defaultBundle(), safety: defaultSafety() },
+  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), bundle: defaultBundle(), safety: defaultSafety() },
   ready: false,
   catalogLoaded: false,
   blackCatalogLoaded: false,
   filter: "",
   blackFilter: "",
   saving: false,
+  justAdded: null,
 };
 const priceFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 
@@ -49,11 +54,42 @@ const elements = {
   blackMarketUncertainPanel: document.getElementById("black-market-uncertain-panel"),
   clearBlackMarketUncertain: document.getElementById("clear-black-market-uncertain"),
   blackMarketUncertainStatus: document.getElementById("black-market-uncertain-status"),
+  clearConfirm: document.getElementById("clear-confirm"),
+  clearConfirmYes: document.getElementById("clear-confirm-yes"),
+  clearConfirmNo: document.getElementById("clear-confirm-no"),
+  saveRow: document.querySelector(".save-row"),
   numberCheckerForm: document.getElementById("number-checker-form"),
   numberCheckerInput: document.getElementById("number-checker-input"),
   numberCheckerButton: document.getElementById("number-checker-button"),
   numberCheckerResult: document.getElementById("number-checker-result"),
+  dryRun: document.getElementById("dry-run"),
+  dryRunNotice: document.getElementById("dry-run-notice"),
+  capEnabled: document.getElementById("cap-enabled"),
+  capAmount: document.getElementById("cap-amount"),
+  capPeriod: document.getElementById("cap-period"),
+  capSpent: document.getElementById("cap-spent"),
+  safetySummary: document.getElementById("safety-summary"),
+  recent: document.getElementById("number-checker-recent"),
+  recentChips: document.getElementById("number-checker-recent-chips"),
+  recentClear: document.getElementById("number-checker-recent-clear"),
+  compare: document.getElementById("number-checker-compare"),
+  compareCols: document.getElementById("compare-cols"),
+  compareVerdict: document.getElementById("compare-verdict"),
+  compareBadges: document.getElementById("compare-badges"),
+  compareClear: document.getElementById("compare-clear"),
 };
+
+const bundlePanel = createBundlePanel({
+  getBundle: () => state.draft.bundle,
+  patch(change) {
+    state.draft.bundle = normalizeBundle({ ...state.draft.bundle, ...change });
+    markDirty();
+  },
+  canEdit: () => state.ready && !state.saving,
+  getCatalog: () => state.catalog,
+  getNames: () => new Map(state.catalog.map((item) => [item.id, item.name])),
+  getProgress: (uid) => getProgress(uid),
+});
 
 function defaultBlackMarket() {
   return {
@@ -63,6 +99,22 @@ function defaultBlackMarket() {
     itemIds: [],
     minimumEnabled: false,
     minimumPrice: 0,
+  };
+}
+
+function defaultSafety() {
+  return { dryRun: false, cap: { enabled: false, amount: 0, period: "day" } };
+}
+
+function normalizeSafety(value) {
+  const amount = Number(value?.cap?.amount);
+  return {
+    dryRun: value?.dryRun === true,
+    cap: {
+      enabled: value?.cap?.enabled === true,
+      amount: Number.isFinite(amount) && amount >= 0 ? amount : 0,
+      period: value?.cap?.period === "session" ? "session" : "day",
+    },
   };
 }
 
@@ -91,9 +143,17 @@ function normalizeSettings(value) {
   const rules = [];
   const seenIds = new Set();
   const seenUids = new Set();
+  // Bundles used to be a rule in the shop list; they are their own setting now, and an old
+  // "Any bundle" rule is carried over into it (keeping its key, so its progress is kept too).
+  const ownsBundle = value?.bundle && typeof value.bundle === "object";
+  let legacyBundle = null;
   for (const rule of Array.isArray(value?.rules) ? value.rules : []) {
     if (!rule || (typeof rule.id !== "string" && typeof rule.id !== "number")) continue;
     const id = String(rule.id);
+    if (id === "bundle") {
+      if (!ownsBundle && !legacyBundle) legacyBundle = fromLegacyRule(rule);
+      continue;
+    }
     if (seenIds.has(id)) continue;
     seenIds.add(id);
 
@@ -112,6 +172,8 @@ function normalizeSettings(value) {
     enabled: value?.enabled === true,
     rules,
     blackMarket: normalizeBlackMarket(value?.blackMarket),
+    bundle: ownsBundle ? normalizeBundle(value.bundle) : (legacyBundle ?? defaultBundle()),
+    safety: normalizeSafety(value?.safety),
   };
 }
 
@@ -132,6 +194,8 @@ function cloneSettings(settings) {
       ...settings.blackMarket,
       itemIds: [...settings.blackMarket.itemIds],
     },
+    bundle: { ...settings.bundle, contains: [...settings.bundle.contains] },
+    safety: { dryRun: settings.safety.dryRun, cap: { ...settings.safety.cap } },
   };
 }
 
@@ -142,6 +206,7 @@ function settingsChanged() {
 function updateSaveState() {
   const dirty = settingsChanged();
   elements.enabled.disabled = !state.ready || state.saving;
+  bundlePanel.renderDisabled();
   for (const control of [
     elements.blackMarketEnabled,
     elements.blackMarketMostExpensive,
@@ -149,6 +214,10 @@ function updateSaveState() {
     elements.blackMarketMinimumEnabled,
     elements.blackMarketMinimumPrice,
     elements.blackMarketSearch,
+    elements.dryRun,
+    elements.capEnabled,
+    elements.capAmount,
+    elements.capPeriod,
   ]) {
     control.disabled = !state.ready || state.saving;
   }
@@ -160,6 +229,7 @@ function updateSaveState() {
   }
   elements.clearBlackMarketUncertain.disabled = !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
   elements.saveButton.disabled = !state.ready || state.saving || !dirty;
+  elements.saveRow.dataset.dirty = String(dirty);
   elements.enabledState.textContent = state.draft.enabled ? "On · changes need saving" : "Paused · changes need saving";
   if (!dirty) {
     elements.enabledState.textContent = state.saved.enabled ? "On" : "Paused";
@@ -227,14 +297,16 @@ function renderCatalog() {
     if (rule) {
       const controls = document.createElement("div");
       controls.className = "item-controls";
+      if (state.justAdded === item.id) controls.classList.add("enter");
 
       const quantityLabel = document.createElement("label");
       quantityLabel.className = "field-label";
       const quantityId = `quantity-${index}`;
       quantityLabel.htmlFor = quantityId;
-      addText(quantityLabel, "span", "", "Max per shop · up to 1,000");
+      addText(quantityLabel, "span", "", "Max per shop");
       const quantity = document.createElement("input");
       quantity.id = quantityId;
+      quantity.title = "A whole number from 1 to 1,000";
       quantity.type = "number";
       quantity.min = "1";
       quantity.max = "1000";
@@ -305,6 +377,7 @@ function renderCatalog() {
     elements.unavailableItems.append(row);
   }
 
+  state.justAdded = null;
   const count = state.draft.rules.length;
   elements.selectedCount.textContent = `${count} selected`;
   updateSaveState();
@@ -387,15 +460,38 @@ function uncertainBlackMarketKeys(progress) {
 function renderBlackMarketRecovery() {
   elements.blackMarketUncertainPanel.hidden = uncertainBlackMarketKeys(state.snapshot.progress).length === 0;
   elements.clearBlackMarketUncertain.disabled = !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
+  if (elements.blackMarketUncertainPanel.hidden || elements.clearBlackMarketUncertain.disabled) {
+    elements.clearConfirm.hidden = true;
+  }
 }
 
-async function requestBlackMarketUncertaintyClear() {
-  if (!state.ready || state.saving || state.saved.enabled || state.draft.enabled) {
+function cannotClearUncertainNow() {
+  return !state.ready || state.saving || state.saved.enabled || state.draft.enabled;
+}
+
+// The game page blocks window.confirm() inside the in-game panel, so confirm inline.
+function askToClearBlackMarketUncertainty() {
+  if (cannotClearUncertainNow()) {
     elements.blackMarketUncertainStatus.hidden = false;
     elements.blackMarketUncertainStatus.textContent = "Pause global Automatic purchases and save settings before continuing.";
     return;
   }
-  if (!window.confirm("Check your inventory first. Clear only uncertain Black Market item entries? The market-wide deal guard will be kept.")) return;
+  elements.clearConfirm.hidden = false;
+  elements.clearConfirmNo.focus();
+}
+
+function cancelClearBlackMarketUncertainty() {
+  elements.clearConfirm.hidden = true;
+  elements.clearBlackMarketUncertain.focus();
+}
+
+async function requestBlackMarketUncertaintyClear() {
+  elements.clearConfirm.hidden = true;
+  if (cannotClearUncertainNow()) {
+    elements.blackMarketUncertainStatus.hidden = false;
+    elements.blackMarketUncertainStatus.textContent = "Pause global Automatic purchases and save settings before continuing.";
+    return;
+  }
 
   const button = elements.clearBlackMarketUncertain;
   button.disabled = true;
@@ -526,9 +622,23 @@ function renderActivity() {
   elements.activityEmpty.hidden = elements.activityList.childElementCount > 0;
 }
 
-function markDirty(message = "Unsaved changes. Save to apply them.") {
+function markDirty(message = "Unsaved changes") {
   elements.saveMessage.textContent = message;
   updateSaveState();
+}
+
+const compactFormatter = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 2 });
+
+function formatEPValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value ?? "—");
+  return Math.abs(number) >= 1e21 ? number.toExponential(3) : priceFormatter.format(number);
+}
+
+function compactEPValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || Math.abs(number) >= 1e21) return "";
+  return Math.abs(number) >= 1e15 ? number.toExponential(2) : compactFormatter.format(number);
 }
 
 function checkerText(container, className, text) {
@@ -541,42 +651,62 @@ function displayCheckerMessage(className, message) {
 }
 
 function displayNumberResult(result) {
-  elements.numberCheckerResult.replaceChildren();
+  const container = elements.numberCheckerResult;
+  container.replaceChildren();
+
   const summary = document.createElement("div");
   summary.className = "checker-summary";
-  addText(summary, "span", "checker-result-label", "Canonical number");
-  addText(summary, "strong", "checker-number", String(result.number ?? "—"));
-  addText(summary, "span", "checker-score-label", "Total score");
-  const totalScore = result.totalScore;
-  const scoreText = typeof totalScore === "number" && Number.isFinite(totalScore)
-    ? `${priceFormatter.format(totalScore)} EP`
-    : `${String(totalScore ?? "—")} EP`;
-  addText(summary, "strong", "checker-score", scoreText);
-  elements.numberCheckerResult.append(summary);
+  const numberBlock = document.createElement("div");
+  numberBlock.className = "checker-number-block";
+  addText(numberBlock, "span", "checker-result-label", "Number");
+  const rarity = normalizeRarity(result.rarity);
+  const numberRow = document.createElement("div");
+  numberRow.className = "checker-number-row";
+  setRarity(addText(numberRow, "strong", "checker-number", String(result.number ?? "—")), rarity);
+  if (rarity) numberRow.append(rarityPill(rarity));
+  numberBlock.append(numberRow);
+  summary.append(numberBlock);
+
+  const scoreBlock = document.createElement("div");
+  scoreBlock.className = "checker-score-block";
+  addText(scoreBlock, "span", "checker-score-label", "Total score");
+  addText(scoreBlock, "strong", "checker-score", `${formatEPValue(result.totalScore)} EP`);
+  const compact = compactEPValue(result.totalScore);
+  if (compact) addText(scoreBlock, "span", "checker-score-compact", `≈ ${compact} EP`);
+  summary.append(scoreBlock);
+  container.append(summary);
+  addPinButton(container, result);
 
   const badges = Array.isArray(result.badges) ? result.badges : [];
-  const badgeHeading = addText(elements.numberCheckerResult, "h3", "checker-badges-heading", "Badges");
+  const scoringCount = badges.filter((badge) => badge?.isScoring !== false).length;
+  const head = document.createElement("div");
+  head.className = "checker-badges-head";
+  const badgeHeading = addText(head, "h3", "checker-badges-heading", "Badges");
   badgeHeading.id = "number-checker-badges-heading";
+  addText(head, "span", "count-badge", `${badges.length} found · ${scoringCount} score`);
+  container.append(head);
+
   if (badges.length === 0) {
-    addText(elements.numberCheckerResult, "p", "checker-no-badges", "No badges returned for this number.");
+    addText(container, "p", "checker-no-badges", "No badges returned for this number.");
     return;
   }
 
   const list = document.createElement("ul");
   list.className = "checker-badges";
   list.setAttribute("aria-labelledby", badgeHeading.id);
-  for (const badge of badges) {
+  for (const [index, badge] of badges.entries()) {
     const row = document.createElement("li");
     row.className = "checker-badge";
+    row.style.setProperty("--i", String(index));
     const name = [badge?.emoji, badge?.label].filter((value) => value !== undefined && value !== null && String(value)).map(String).join(" ");
     addText(row, "span", "checker-badge-name", name || String(badge?.id ?? "Badge"));
     if (badge?.isScoring === false) {
+      row.classList.add("is-muted");
       addText(row, "span", "checker-nonscoring", "Doesn’t score");
     } else {
+      row.classList.add("is-scoring");
       if (badge?.score !== undefined && badge.score !== null) {
-        const numericScore = Number(badge.score);
-        const scoreText = Number.isFinite(numericScore) ? priceFormatter.format(numericScore) : String(badge.score);
-        checkerText(row, "checker-badge-score", `${scoreText} EP`);
+        checkerText(row, "checker-badge-score", `${formatEPValue(badge.score)} EP`);
       }
       if (badge?.multiplier !== undefined && badge.multiplier !== null) {
         checkerText(row, "checker-badge-multiplier", `×${String(badge.multiplier)}`);
@@ -584,7 +714,7 @@ function displayNumberResult(result) {
     }
     list.append(row);
   }
-  elements.numberCheckerResult.append(list);
+  container.append(list);
 }
 
 async function checkNumber(event) {
@@ -597,6 +727,7 @@ async function checkNumber(event) {
   }
 
   elements.numberCheckerButton.disabled = true;
+  elements.numberCheckerButton.classList.add("is-busy");
   elements.numberCheckerResult.setAttribute("aria-busy", "true");
   displayCheckerMessage("checker-loading", "Checking preview…");
   try {
@@ -607,17 +738,281 @@ async function checkNumber(event) {
       displayCheckerMessage("checker-error", "The number checker returned an incomplete result. Try again.");
     } else {
       displayNumberResult(response.result);
+      rememberCheck(response.result);
+      // On short screens the score can land below the fold; bring it into view.
+      elements.numberCheckerResult.querySelector(".checker-summary")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   } catch (error) {
     const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
     displayCheckerMessage("checker-error", `Could not reach the number checker. Make sure an RNGidle tab is open, then try again${detail}`);
   } finally {
     elements.numberCheckerButton.disabled = false;
+    elements.numberCheckerButton.classList.remove("is-busy");
     elements.numberCheckerResult.removeAttribute("aria-busy");
   }
 }
 
+// ---------- safety: dry run and spending limit ----------
+
+function safetySummaryText(safety) {
+  const parts = [];
+  if (safety.cap.enabled && safety.cap.amount > 0) {
+    parts.push(`Limit ${compactEPValue(safety.cap.amount) || formatEPValue(safety.cap.amount)} / ${safety.cap.period === "day" ? "day" : "session"}`);
+  }
+  if (safety.dryRun) parts.push("Dry run");
+  return parts.join(" · ") || "Off";
+}
+
+function localDayKey(time = Date.now()) {
+  const date = new Date(time);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// How much auto-buy has spent in the current limit period, from the background worker's record.
+async function spentInPeriod(period) {
+  const spend = state.snapshot.spend;
+  if (!spend || typeof spend !== "object") return 0;
+  if (period === "day") return spend.day === localDayKey() ? Number(spend.dayTotal) || 0 : 0;
+  let sessionId = state.snapshot.sessionId;
+  try {
+    const stored = await chrome.storage.session.get("sessionId");
+    if (stored?.sessionId) sessionId = stored.sessionId;
+  } catch {
+    // Older Chrome builds or blocked contexts fall back to the copy kept in local storage.
+  }
+  return spend.session && spend.session === sessionId ? Number(spend.sessionTotal) || 0 : 0;
+}
+
+async function renderSpent() {
+  const cap = state.saved.safety.cap;
+  const strong = document.createElement("strong");
+  if (!cap.enabled || !(cap.amount > 0)) {
+    elements.capSpent.replaceChildren("Spent so far · ", Object.assign(strong, { textContent: "no limit set" }));
+    return;
+  }
+  const spent = await spentInPeriod(cap.period);
+  const label = cap.period === "day" ? "Spent today" : "Spent this session";
+  strong.textContent = `${compactEPValue(spent) || "0"} of ${compactEPValue(cap.amount) || formatEPValue(cap.amount)} EP`;
+  elements.capSpent.replaceChildren(`${label} · `, strong);
+}
+
+function renderSafety() {
+  const { safety } = state.draft;
+  elements.dryRun.checked = safety.dryRun;
+  elements.capEnabled.checked = safety.cap.enabled;
+  if (document.activeElement !== elements.capAmount) elements.capAmount.value = safety.cap.amount > 0 ? String(safety.cap.amount) : "";
+  elements.capPeriod.value = safety.cap.period;
+  elements.capAmount.placeholder = "e.g. 5000000";
+  elements.safetySummary.textContent = safetySummaryText(safety);
+  elements.dryRunNotice.hidden = !state.saved.safety.dryRun;
+  void renderSpent();
+}
+
+function bindSafety() {
+  elements.dryRun.addEventListener("change", () => {
+    state.draft.safety.dryRun = elements.dryRun.checked;
+    renderSafety();
+    markDirty();
+  });
+  elements.capEnabled.addEventListener("change", () => {
+    state.draft.safety.cap.enabled = elements.capEnabled.checked;
+    renderSafety();
+    markDirty();
+  });
+  elements.capAmount.addEventListener("input", () => {
+    const amount = Number(elements.capAmount.value);
+    state.draft.safety.cap.amount = elements.capAmount.value !== "" && Number.isFinite(amount) && amount >= 0 ? amount : 0;
+    elements.safetySummary.textContent = safetySummaryText(state.draft.safety);
+    markDirty();
+  });
+  elements.capPeriod.addEventListener("change", () => {
+    state.draft.safety.cap.period = elements.capPeriod.value === "session" ? "session" : "day";
+    renderSafety();
+    markDirty();
+  });
+}
+
+// Settings pasted in from a backup load as unsaved changes. Auto-buy stays off and the rules get
+// fresh ids, so nothing here can spend EP or reuse another install's progress until you save.
+function importSettings(raw) {
+  const imported = normalizeSettings(raw);
+  const used = new Set();
+  imported.rules = imported.rules.map((rule) => {
+    const uid = newUid(used);
+    used.add(uid);
+    return { ...rule, uid };
+  });
+  imported.enabled = false;
+  state.draft = cloneSettings(imported);
+  elements.enabled.checked = false;
+  renderCatalog();
+  renderBlackMarket();
+  bundlePanel.load();
+  renderSafety();
+  markDirty("Imported settings are not saved yet.");
+}
+
+// ---------- number checker: recent checks and compare ----------
+
+const RECENT_LIMIT = 8;
+const checker = { recent: [], pinned: null, latest: null };
+
+function summarizeResult(result) {
+  return {
+    number: String(result.number ?? ""),
+    totalScore: Number(result.totalScore),
+    rarity: normalizeRarity(result.rarity),
+    badges: (Array.isArray(result.badges) ? result.badges : []).slice(0, 60).map((badge) => ({
+      id: String(badge?.id ?? badge?.label ?? ""),
+      label: String(badge?.label ?? badge?.id ?? ""),
+      emoji: String(badge?.emoji ?? ""),
+      isScoring: badge?.isScoring !== false,
+    })),
+  };
+}
+
+function badgeName(badge) {
+  return [badge.emoji, badge.label].filter(Boolean).join(" ") || badge.id;
+}
+
+// Splits two results' scoring badges into shared and one-sided ones.
+function diffBadges(a, b) {
+  const scoring = (summary) => new Map(summary.badges.filter((badge) => badge.isScoring).map((badge) => [badge.id, badge]));
+  const left = scoring(a), right = scoring(b);
+  return {
+    both: [...left.keys()].filter((id) => right.has(id)).map((id) => left.get(id)),
+    onlyA: [...left.keys()].filter((id) => !right.has(id)).map((id) => left.get(id)),
+    onlyB: [...right.keys()].filter((id) => !left.has(id)).map((id) => right.get(id)),
+  };
+}
+
+function persistChecker() {
+  chrome.storage.local.set({ checkerRecent: checker.recent, checkerPinned: checker.pinned }).catch(() => {});
+}
+
+function renderRecent() {
+  elements.recentChips.replaceChildren();
+  elements.recent.hidden = checker.recent.length === 0;
+  for (const entry of checker.recent) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip chip-button";
+    chip.dataset.example = entry.number;
+    chip.textContent = entry.number.length > 14 ? `${entry.number.slice(0, 13)}…` : entry.number;
+    const rarity = normalizeRarity(entry.rarity);
+    setRarity(chip, rarity);
+    chip.title = [entry.number, rarityTitle(rarity), `${compactEPValue(entry.totalScore) || formatEPValue(entry.totalScore)} EP`].filter(Boolean).join(" · ");
+    elements.recentChips.append(chip);
+  }
+}
+
+function addCompareColumn(summary, label) {
+  const column = document.createElement("div");
+  column.className = "compare-col";
+  addText(column, "span", "compare-label", label);
+  const rarity = normalizeRarity(summary.rarity);
+  addText(column, "strong", "compare-number", summary.number.length > 18 ? `${summary.number.slice(0, 17)}…` : summary.number);
+  addText(column, "span", "compare-score", `${formatEPValue(summary.totalScore)} EP`);
+  if (rarity) column.append(rarityPill(rarity, { small: true }));
+  elements.compareCols.append(column);
+}
+
+function renderCompare() {
+  const { pinned, latest } = checker;
+  const show = !!pinned && !!latest && pinned.number !== latest.number;
+  elements.compare.hidden = !pinned;
+  elements.compareCols.replaceChildren();
+  elements.compareBadges.replaceChildren();
+  if (!pinned) return;
+  addCompareColumn(pinned, "Pinned");
+  if (!show) {
+    elements.compareVerdict.textContent = "Check another number to compare it with the pinned one.";
+    return;
+  }
+  addCompareColumn(latest, "Latest");
+  const delta = latest.totalScore - pinned.totalScore;
+  const ratio = pinned.totalScore > 0 && latest.totalScore > 0 ? latest.totalScore / pinned.totalScore : null;
+  elements.compareVerdict.textContent = delta === 0 ? "Both score the same."
+    : `${latest.number.length > 18 ? "The latest" : latest.number} scores ${compactEPValue(Math.abs(delta)) || formatEPValue(Math.abs(delta))} EP ${delta > 0 ? "more" : "less"}${ratio ? ` (×${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(2)})` : ""}.`;
+  const diff = diffBadges(pinned, latest);
+  for (const [heading, badges] of [["Only pinned", diff.onlyA], ["Only latest", diff.onlyB], ["Both", diff.both]]) {
+    if (!badges.length) continue;
+    const group = document.createElement("div");
+    group.className = "compare-group";
+    addText(group, "span", "compare-label", heading);
+    for (const badge of badges) addText(group, "span", "chip", badgeName(badge));
+    elements.compareBadges.append(group);
+  }
+}
+
+function rememberCheck(result) {
+  const summary = summarizeResult(result);
+  checker.latest = summary;
+  checker.recent = [summary, ...checker.recent.filter((entry) => entry.number !== summary.number)].slice(0, RECENT_LIMIT);
+  persistChecker();
+  renderRecent();
+  renderCompare();
+}
+
+function addPinButton(container, result) {
+  const row = document.createElement("div");
+  row.className = "checker-actions";
+  const pinned = checker.pinned?.number === String(result.number ?? "");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn-ghost btn-small";
+  button.textContent = pinned ? "Pinned for comparison" : "Pin to compare";
+  button.disabled = pinned;
+  button.addEventListener("click", () => {
+    checker.pinned = summarizeResult(result);
+    persistChecker();
+    button.textContent = "Pinned for comparison";
+    button.disabled = true;
+    renderCompare();
+  });
+  row.append(button);
+  container.append(row);
+}
+
+async function loadCheckerExtras() {
+  try {
+    const stored = await chrome.storage.local.get(["checkerRecent", "checkerPinned"]);
+    const valid = (entry) => entry && typeof entry.number === "string" && Number.isFinite(Number(entry.totalScore)) && Array.isArray(entry.badges);
+    checker.recent = Array.isArray(stored.checkerRecent) ? stored.checkerRecent.filter(valid).slice(0, RECENT_LIMIT) : [];
+    checker.pinned = valid(stored.checkerPinned) ? stored.checkerPinned : null;
+  } catch {
+    checker.recent = [];
+    checker.pinned = null;
+  }
+  renderRecent();
+  renderCompare();
+}
+
+function bindCheckerExtras() {
+  elements.recentChips.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-example]");
+    if (!chip) return;
+    elements.numberCheckerInput.value = chip.dataset.example;
+    elements.numberCheckerForm.requestSubmit();
+  });
+  elements.recentClear.addEventListener("click", () => {
+    checker.recent = [];
+    persistChecker();
+    renderRecent();
+  });
+  elements.compareClear.addEventListener("click", () => {
+    checker.pinned = null;
+    persistChecker();
+    renderCompare();
+    const pin = elements.numberCheckerResult.querySelector(".checker-actions button");
+    if (pin) { pin.disabled = false; pin.textContent = "Pin to compare"; }
+  });
+}
+
 function bindEvents() {
+  bindSafety();
+  bindCheckerExtras();
+  document.addEventListener("shophelper:import-settings", (event) => importSettings(event.detail));
   elements.numberCheckerForm.addEventListener("submit", checkNumber);
 
   elements.enabled.addEventListener("change", () => {
@@ -675,7 +1070,9 @@ function bindEvents() {
     renderBlackCatalog();
   });
 
-  elements.clearBlackMarketUncertain.addEventListener("click", requestBlackMarketUncertaintyClear);
+  elements.clearBlackMarketUncertain.addEventListener("click", askToClearBlackMarketUncertainty);
+  elements.clearConfirmYes.addEventListener("click", requestBlackMarketUncertaintyClear);
+  elements.clearConfirmNo.addEventListener("click", cancelClearBlackMarketUncertainty);
 
   elements.catalogSearch.addEventListener("input", () => {
     state.filter = elements.catalogSearch.value;
@@ -691,6 +1088,7 @@ function bindEvents() {
       if (target instanceof HTMLInputElement && itemId) {
         if (target.checked && !getRule(itemId)) {
           state.draft.rules.push({ uid: newUid(state.draft.rules.map((rule) => rule.uid)), id: itemId, quantity: 1000, mode: "once" });
+          state.justAdded = itemId;
         } else if (!target.checked) {
           state.draft.rules = state.draft.rules.filter((rule) => rule.id !== itemId);
         }
@@ -768,7 +1166,6 @@ function loadCatalog() {
       const id = String(item.id);
       if (!items.has(id)) items.set(id, { id, name: String(item.name), price: item.price });
     }
-    items.set("bundle", { id: "bundle", name: "Any bundle", price: null });
     return [...items.values()];
   });
 }
@@ -805,10 +1202,16 @@ function validateSettings() {
       return "Choose a purchase rule for every selected item.";
     }
   }
+  const bundleProblem = bundlePanel.validate();
+  if (bundleProblem) return bundleProblem;
   const minimumPrice = state.draft.blackMarket.minimumPrice;
   if (state.draft.blackMarket.minimumEnabled &&
     (typeof minimumPrice !== "number" || !Number.isFinite(minimumPrice) || minimumPrice < 0)) {
     return "Enter a valid minimum item price of 0 EP or more.";
+  }
+  const cap = state.draft.safety.cap;
+  if (cap.enabled && !(Number.isFinite(cap.amount) && cap.amount > 0)) {
+    return "Enter a spending limit above 0 EP, or turn the limit off.";
   }
   return "";
 }
@@ -838,6 +1241,15 @@ async function saveSettings() {
         ? state.draft.blackMarket.minimumPrice
         : 0,
     },
+    bundle: normalizeBundle(state.draft.bundle),
+    safety: {
+      dryRun: state.draft.safety.dryRun,
+      cap: {
+        enabled: state.draft.safety.cap.enabled,
+        amount: Number.isFinite(state.draft.safety.cap.amount) && state.draft.safety.cap.amount >= 0 ? state.draft.safety.cap.amount : 0,
+        period: state.draft.safety.cap.period,
+      },
+    },
   };
   state.saving = true;
   elements.saveMessage.textContent = "Saving…";
@@ -859,6 +1271,8 @@ async function saveSettings() {
     updateSaveState();
     renderCatalog();
     renderBlackMarket();
+    bundlePanel.load();
+    renderSafety();
 
     try {
       const response = chrome.runtime.sendMessage({ type: "SETTINGS_CHANGED" });
@@ -888,13 +1302,18 @@ function handleStorageChanges(changes, areaName) {
     elements.enabled.checked = state.draft.enabled;
     renderCatalog();
     renderBlackMarket();
+    bundlePanel.load();
+    renderSafety();
   } else if (settingsUpdated) {
     elements.saveMessage.textContent = "Settings changed elsewhere; your unsaved edits are still here.";
   }
 
+  if ("spend" in changes || "sessionId" in changes) void renderSpent();
+
   renderStatus();
   if ("progress" in changes) {
     renderProgress();
+    bundlePanel.renderProgress();
     renderBlackMarketRecovery();
   }
   if ("activity" in changes) renderActivity();
@@ -936,8 +1355,11 @@ async function initialize() {
   renderStatus();
   renderCatalog();
   renderBlackMarket();
+  bundlePanel.load();
+  renderSafety();
   renderActivity();
   updateSaveState();
+  void loadCheckerExtras();
 }
 
 initialize();

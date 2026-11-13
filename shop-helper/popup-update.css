@@ -1,0 +1,114 @@
+/* Update checker styles (version button, update panel, settings card). */
+
+/* ---------- the version button ---------- */
+
+.version-pill {
+  position: relative;
+  transition: border-color 0.2s, background-color 0.2s, transform 0.25s var(--spring);
+}
+.version-pill:hover { border-color: rgba(139, 108, 255, 0.75); background-color: rgba(139, 108, 255, 0.24); }
+.version-pill:active { transform: scale(0.95); }
+.version-pill[aria-expanded="true"] { border-color: var(--accent); background-color: rgba(139, 108, 255, 0.28); }
+.version-pill.has-update::after {
+  content: ""; position: absolute; top: -3px; right: -3px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--good); box-shadow: 0 0 0 2px rgb(var(--bg-rgb));
+  animation: update-dot 2.4s var(--ease) infinite;
+}
+@keyframes update-dot { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+
+/* ---------- the panel under the header ---------- */
+
+.update-panel {
+  flex: none; margin: 0 16px 10px; padding: 12px 14px; border-radius: 16px;
+  max-height: min(340px, 60vh); overflow-y: auto; overscroll-behavior: contain;
+  background: linear-gradient(180deg, rgba(var(--ink), 0.08), rgba(var(--ink), 0.04)), rgb(var(--bg-rgb));
+  border: 1px solid rgba(139, 108, 255, 0.38);
+  box-shadow: 0 12px 30px rgba(var(--shade), 0.3);
+  overflow-wrap: anywhere;
+  animation: controls-in 0.3s var(--ease) both;
+}
+.update-panel::-webkit-scrollbar { width: 8px; }
+.update-panel::-webkit-scrollbar-thumb { background: rgba(var(--ink), 0.16); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+
+.update-head { display: flex; align-items: flex-start; gap: 9px; }
+/* Title and pre-release chip share a line when they fit and wrap when they don't. */
+.update-heading { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.update-title { min-width: 0; max-width: 100%; font-size: 14px; font-weight: 700; line-height: 1.35; }
+.update-title:focus { outline: none; }
+.update-title:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 4px; }
+.update-icon {
+  flex: none; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%;
+  background: var(--faint);
+}
+.update-icon[data-tone="good"] { background: var(--good); }
+.update-icon[data-tone="new"] { background: var(--good); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.22); }
+.update-icon[data-tone="bad"] { background: var(--bad); }
+.update-icon[data-tone="busy"],
+.status-dot.update-busy {
+  background: none; border: 2px solid rgba(var(--ink), 0.2); border-top-color: var(--accent-2);
+  animation: spin 0.8s linear infinite;
+}
+.update-icon[data-tone="busy"] { width: 14px; height: 14px; margin-top: 3px; }
+.chip.update-pre {
+  max-width: 100%; padding: 2px 8px; font-size: 11px; font-weight: 650; white-space: normal;
+  color: var(--t-warn); background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.4);
+}
+.update-close { width: 26px; height: 26px; margin-top: -3px; border-radius: 8px; }
+.update-close svg { width: 14px; height: 14px; }
+
+.update-body { display: grid; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.update-body p, .update-body h3, .update-body ol, .update-body ul { margin: 0; }
+.update-lead { color: var(--text); }
+.update-meta { font-size: 11.5px; color: var(--faint); }
+.update-facts { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 0; list-style: none; font-size: 11.5px; color: var(--faint); }
+.update-notes-title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); }
+.update-notes {
+  max-height: 112px; overflow-y: auto; padding: 8px 10px; border-radius: 10px;
+  white-space: pre-line; font-size: 12px; color: var(--muted);
+  background: rgba(var(--shade), 0.22); border: 1px solid var(--line);
+}
+.update-steps { display: grid; gap: 5px; padding-left: 20px; color: var(--text); }
+.update-steps li::marker { color: var(--accent-2); font-weight: 700; }
+.update-error {
+  padding: 7px 10px; border-radius: 10px; font-size: 12px;
+  color: var(--t-bad); background: rgba(251, 113, 133, 0.1); border: 1px solid rgba(251, 113, 133, 0.32);
+}
+
+/* Long translations wrap inside buttons instead of running out of the panel. */
+.update-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.update-actions .btn, #update-settings-card .inline-actions .btn {
+  max-width: 100%; white-space: normal; text-align: center; line-height: 1.25; padding-top: 5px; padding-bottom: 5px;
+}
+
+/* ---------- the Settings card ---------- */
+
+#update-settings-card { overflow-wrap: anywhere; }
+#update-settings-card > p:not(.fine-print):not(.update-status-line) { margin-top: 4px; }
+.update-status-line { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; }
+.card p.update-status-line { color: var(--muted); }
+.update-status-line .status-dot { margin-top: 5px; }
+.update-status-line .status-dot.update-busy { width: 10px; height: 10px; margin-top: 4px; }
+.update-status-line .status-dot.update-new { background: var(--good); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.22); }
+.update-status-text { flex: 1; min-width: 0; }
+
+/* ---------- compact layout ---------- */
+
+html[data-compact="true"] .update-panel { margin-bottom: 6px; padding: 10px 11px; border-radius: 13px; }
+html[data-compact="true"] .update-body { gap: 6px; margin-top: 6px; }
+html[data-compact="true"] .update-notes { max-height: 90px; }
+
+/* ---------- light theme ---------- */
+
+html[data-theme="light"] .update-panel {
+  background: linear-gradient(180deg, #ffffff, #fafaff);
+  border-color: rgba(109, 76, 240, 0.32);
+  box-shadow: 0 8px 22px rgba(var(--shade), 0.14);
+}
+html[data-theme="light"] .version-pill:hover { background-color: rgba(109, 76, 240, 0.16); }
+html[data-theme="light"] .version-pill[aria-expanded="true"] { background-color: rgba(109, 76, 240, 0.2); }
+html[data-theme="light"] .update-notes { background: rgba(var(--ink), 0.04); }
+html[data-theme="light"] .chip.update-pre { background: rgba(183, 121, 31, 0.12); border-color: rgba(183, 121, 31, 0.42); }
+html[data-theme="light"] .update-error { background: rgba(214, 58, 85, 0.08); border-color: rgba(214, 58, 85, 0.3); }
+html[data-theme="light"] .update-icon[data-tone="new"],
+html[data-theme="light"] .update-status-line .status-dot.update-new { box-shadow: 0 0 0 3px rgba(15, 159, 110, 0.18); }

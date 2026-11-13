@@ -1,14 +1,32 @@
-import { chooseBlackMarketPurchase, choosePurchase, shopKey } from './logic.js';
+import { blackMarketMatches, bundleRunLength, chooseBlackMarketPurchase, choosePurchase, shopKey } from './logic.js';
+import { createGlitchService, GLITCH_ALARM } from './glitch.js';
+import {
+  dryRunProgress, ensureSessionId, normalizeDryRunSeen, normalizeSafety, pruneDryRunSeen, recordSpend, remainingBudget,
+  spentInPeriod,
+} from './safety.js';
+import { addHistory } from './history.js';
+import { createNotifier, formatEp, GAME_TABS } from './notify.js';
+import { marketStatus, walletOf } from './market.js';
+import { normalizeUiPrefs, wantsEvent } from './ui-prefs.js';
+import { bundleSignature, rulesOf, withBundleRule } from './bundle.js';
+import { createUpdateService } from './update-service.js';
+import { registerMenuCommands } from './menu-commands.js';
 
 const ALARM = 'check-shop';
 const storage = chrome.storage.local;
+const notifier = createNotifier({ storage, chrome });
 let running;
+let blackWatch;
 const catalogPromise = fetch(chrome.runtime.getURL('catalog.json')).then(r => r.json());
 const versionPromise = fetch(chrome.runtime.getURL('catalog-version.json')).then(r => r.json());
 const blackCatalogPromise = fetch(chrome.runtime.getURL('black-catalog.json'))
   .then(r => r.ok ? r.json() : [])
   .then(data => Array.isArray(data) ? data : [])
   .catch(() => []);
+const glitchNamesPromise = fetch(chrome.runtime.getURL('glitch-catalog.json'))
+  .then(r => r.ok ? r.json() : [])
+  .then(data => new Map((Array.isArray(data) ? data : []).filter(item => item && typeof item.id === 'string').map(item => [item.id, String(item.name || item.id)])))
+  .catch(() => new Map());
 
 async function status(state, message, extra = {}) {
   await storage.set({ runStatus: { state, message, checkedAt: Date.now(), ...extra } });
@@ -56,13 +74,38 @@ function blackMarketSettings(value) {
 function sameBlackMarketSettings(a, b) {
   return JSON.stringify(blackMarketSettings(a)) === JSON.stringify(b);
 }
-async function recordResult(pending, result, progress, recovering) {
+function getSessionId() {
+  return ensureSessionId({ session: chrome.storage.session, local: storage, create: () => crypto.randomUUID() });
+}
+async function logHistory(entry) {
+  try { await addHistory(storage, entry); } catch { /* history is informational */ }
+}
+const placeName = source => (source === 'black' ? 'Black Market' : "Glim's shop");
+// What a purchase (pending or simulated) is, in history terms. Price is EP per unit, or null if unknown.
+function purchaseFacts({ kind, item, name, qty, price }) {
+  const source = kind === 'blackMarket' ? 'black' : kind === 'bundle' ? 'bundle' : 'shop';
+  const count = Number.isSafeInteger(qty) && qty > 0 ? qty : 1;
+  const unit = typeof price === 'number' && Number.isFinite(price) && price > 0 ? price : null;
+  return { source, item, name, qty: count, price: unit, total: unit == null ? null : unit * count };
+}
+function spentLine(facts, verb = 'Spent') {
+  return facts.total == null ? placeName(facts.source) : `${verb} ${formatEp(facts.total)} EP · ${placeName(facts.source)}`;
+}
+function limitMessage(safety, spent) {
+  const day = safety.cap.period === 'day';
+  return `Spending limit reached (${formatEp(spent)} of ${formatEp(safety.cap.amount)} EP ${day ? 'today' : 'this browser session'}, ` +
+    `resets ${day ? 'at midnight' : 'when the browser restarts'}). Nothing more will be bought until then.`;
+}
+async function recordResult(pending, result, progress, recovering, sessionId) {
   const lastSlot = pending.key;
+  const facts = purchaseFacts(pending);
   if (result.ok) {
+    // Spend is written with progress, so a restart can never keep the purchase but lose its cost.
+    const spend = recordSpend((await storage.get('spend')).spend, facts, { now: Date.now(), sessionId });
     if (pending.kind === 'blackMarket') {
       progress[pending.uid] = { status: 'complete', lastSlot, requestId: pending.requestId, message: `Bought ${pending.name}.` };
       progress['blackMarket:deal'] = { lastSlot };
-      await storage.set({ progress });
+      await storage.set({ progress, spend });
       await activity(`Bought ${pending.name}.`);
     } else if (pending.kind === 'bundle') {
       const previous = progress[pending.uid] || {};
@@ -75,15 +118,17 @@ async function recordResult(pending, result, progress, recovering) {
         targetQuantity: pending.mode === 'once' ? pending.targetQuantity : undefined,
         message: `Bought ${slotBought} Glim bundle${slotBought === 1 ? '' : 's'} in this shop.`
       };
-      await storage.set({ progress });
+      await storage.set({ progress, spend });
       await activity(`Bought ${pending.name}.`);
     } else {
       const complete = pending.mode === 'once';
       progress[pending.uid] = { status: complete ? 'complete' : 'purchased', lastSlot, requestId: pending.requestId, message: `Bought ${pending.qty} × ${pending.name}.` };
-      await storage.set({ progress });
+      await storage.set({ progress, spend });
       await activity(`Bought ${pending.qty} × ${pending.name}.`);
     }
     await storage.remove('pendingPurchase');
+    await logHistory({ ...facts, result: 'bought' });
+    await notifier.announce('purchase', { title: `Bought ${facts.qty} × ${facts.name}`, message: spentLine(facts), sound: 'success' });
     return true;
   }
   if (result.status >= 400 && result.status < 500 && result.status !== 429) {
@@ -95,14 +140,30 @@ async function recordResult(pending, result, progress, recovering) {
     await storage.set({ progress });
     await activity(`${pending.name}: purchase declined (${result.error}).`);
     await storage.remove('pendingPurchase');
+    if (recovering) {
+      await logHistory({ ...facts, result: 'uncertain', message: 'A previous request may have succeeded. Check your inventory.' });
+      await notifier.announce('purchase', {
+        title: `Purchase uncertain: ${facts.name}`,
+        message: 'An earlier request may have gone through. Check your inventory.',
+        sound: 'fail',
+      });
+    } else {
+      const reason = result.error || 'no reason given';
+      await logHistory({ ...facts, result: 'declined', message: `Purchase declined: ${reason}` });
+      await notifier.announce('purchase', { title: `Purchase declined: ${facts.name}`, message: `${reason} · ${placeName(facts.source)}`, sound: 'fail' });
+    }
     return true;
   }
   await status('waiting', `Purchase result uncertain; will retry the same request: ${result.error || 'network error'}`, { gameTabOpen: true, signedIn: true });
   return false;
 }
-async function runCheck(depth = 0) {
+// `dry` carries what earlier dry-run picks in this check would have spent; it is never stored.
+async function runCheck(depth = 0, dry = { count: 0, spent: 0 }) {
   if (depth >= 100) return status('error', 'Too many purchases in one check. Pausing until the next check.');
-  let { settings, progress = {}, pendingPurchase, boundAccount } = await storage.get(['settings', 'progress', 'pendingPurchase', 'boundAccount']);
+  let { settings, progress = {}, pendingPurchase, boundAccount, spend, dryRunSeen } =
+    await storage.get(['settings', 'progress', 'pendingPurchase', 'boundAccount', 'spend', 'dryRunSeen']);
+  // The bundle is its own setting; the planner buys it through a rule made from it.
+  settings = withBundleRule(settings);
   const rules = Array.isArray(settings?.rules) ? settings.rules : [];
   const blackMarketEnabled = settings?.blackMarket?.enabled === true;
   if (!settings?.enabled) return status('paused', 'Automatic buying is paused.');
@@ -127,9 +188,25 @@ async function runCheck(depth = 0) {
   }
 
   const recovering = !!pendingPurchase;
+  const safety = normalizeSafety(settings.safety);
+  // A purchase already sent (recovering) is always retried for real, even in a dry run.
+  const dryRun = safety.dryRun && !recovering;
+  if (!safety.dryRun && dryRunSeen !== undefined) await storage.remove('dryRunSeen');
+  let seen = dryRun ? normalizeDryRunSeen(dryRunSeen) : {};
+  const seenBefore = JSON.stringify(seen);
+  const now = Date.now();
+  const sessionId = await getSessionId();
+  const budget = Math.max(0, remainingBudget(safety, spend, { now, sessionId }) - dry.spent);
+  // Dry-run picks are never paid for, so later picks see the EP the earlier ones would have used.
+  const simulateWallet = shop => {
+    const wallet = Number(shop?.wallet?.effective);
+    if (dry.spent > 0 && Number.isFinite(wallet)) shop.wallet = { ...shop.wallet, effective: Math.max(0, wallet - dry.spent) };
+  };
   let activeShop;
   let activeType;
   let selection = null;
+  // Set when the cap, and only the cap, stopped an otherwise eligible purchase.
+  let capBlocked = false;
   if (pendingPurchase?.kind === 'blackMarket') {
     const loaded = await loadShop(tab.id, 'SITE_BLACK_MARKET');
     if (!loaded.shop) return status('error', `Could not load the Black Market: ${loaded.error}`, { gameTabOpen: true, signedIn: true });
@@ -144,7 +221,8 @@ async function runCheck(depth = 0) {
     }
     if (!pendingPurchase && activeShop) {
       const catalog = await catalogPromise;
-      if (activeShop.open && !activeShop.eaten && shopKey(activeShop)) {
+      const key = shopKey(activeShop);
+      if (!dryRun && activeShop.open && !activeShop.eaten && key) {
         let changed = false;
         for (const rule of rules) {
           const previous = progress[rule.uid];
@@ -156,29 +234,76 @@ async function runCheck(depth = 0) {
         }
         if (changed) await storage.set({ progress });
       }
-      selection = choosePurchase(settings, progress, activeShop, catalog);
+      let planned = progress;
+      if (dryRun) {
+        simulateWallet(activeShop);
+        seen = pruneDryRunSeen(seen, { shopKey: key });
+        planned = dryRunProgress(progress, seen, { rules, shopKey: key });
+      }
+      selection = choosePurchase(settings, planned, activeShop, catalog, budget);
+      if (!selection && budget !== Infinity && choosePurchase(settings, planned, activeShop, catalog)) capBlocked = true;
     }
     if (!pendingPurchase && !selection && blackMarketEnabled) {
       const loaded = await loadShop(tab.id, 'SITE_BLACK_MARKET');
       if (!loaded.shop) return status('error', `Could not load the Black Market: ${loaded.error}`, { gameTabOpen: true, signedIn: true });
       activeShop = loaded.shop;
       activeType = 'blackMarket';
-      selection = chooseBlackMarketPurchase(settings, progress, activeShop, await blackCatalogPromise);
+      const blackCatalog = await blackCatalogPromise;
+      const key = shopKey(activeShop);
+      let planned = progress;
+      if (dryRun) {
+        simulateWallet(activeShop);
+        seen = pruneDryRunSeen(seen, { marketKey: key });
+        planned = dryRunProgress(progress, seen, { marketKey: key });
+      }
+      selection = chooseBlackMarketPurchase(settings, planned, activeShop, blackCatalog, budget);
+      if (!selection && budget !== Infinity && chooseBlackMarketPurchase(settings, planned, activeShop, blackCatalog)) capBlocked = true;
     }
   }
 
   if (!pendingPurchase && !selection) {
     const market = activeType === 'blackMarket';
     const closed = !activeShop?.open || activeShop?.eaten || activeShop?.dealt;
-    const message = market
+    let state = 'watching';
+    let message = market
       ? (closed ? 'The Black Market is closed. Waiting for it to reopen.' : 'Watching for eligible Black Market offers.')
       : (closed ? 'The shop is closed. Waiting for it to reopen.' : 'Watching for selected items, stock and enough EP.');
-    return status('watching', message, { gameTabOpen: true, signedIn: true });
+    if (capBlocked) {
+      state = 'waiting';
+      message = limitMessage(safety, spentInPeriod(safety, spend, { now, sessionId }) + dry.spent);
+    }
+    if (dryRun) {
+      if (JSON.stringify(seen) !== seenBefore) await storage.set({ dryRunSeen: seen });
+      state = 'watching';
+      message = dry.count
+        ? `Dry run: would have bought ${dry.count} item(s) — nothing was spent.${capBlocked ? ' The spending limit would stop anything more.' : ''}`
+        : `Dry run (nothing is bought): ${message}`;
+    }
+    return status(state, message, { gameTabOpen: true, signedIn: true, ...(capBlocked ? { capReached: true } : {}) });
   }
 
   const [expected, actual] = await Promise.all([versionPromise, site(tab.id, { type: 'SITE_CATALOG_HASH' })]);
   if (!actual?.ok) return status('error', 'Could not verify current shop prices; no purchase was made.', { gameTabOpen: true, signedIn: true });
   if (actual.data !== expected.sha256) return status('error', 'The game updated its shop catalogue. Update this extension before buying.', { gameTabOpen: true, signedIn: true });
+
+  if (dryRun) {
+    // Nothing is sent, saved as pending, or counted: only the record of what would have happened.
+    const bundle = selection.kind === 'bundle';
+    const facts = purchaseFacts(selection.kind === 'blackMarket'
+      ? { kind: 'blackMarket', item: selection.item.id, name: selection.item.name, qty: 1, price: selection.price }
+      : {
+        kind: selection.kind, item: selection.item.id, name: selection.item.name, price: selection.item.price,
+        qty: bundle ? bundleRunLength(selection, progress[selection.rule.uid], activeShop, budget) : selection.quantity,
+      });
+    seen = { ...seen, [selection.kind === 'blackMarket' ? selection.uid : selection.rule.uid]: selection.key };
+    await storage.set({ dryRunSeen: seen });
+    await activity(`Dry run: would buy ${facts.qty} × ${facts.name}.`);
+    await logHistory({ ...facts, result: 'dryrun', message: 'Dry run: nothing was bought or spent.' });
+    await notifier.announce('purchase', {
+      title: `Dry run: would buy ${facts.qty} × ${facts.name}`, message: `${spentLine(facts, 'Would spend')} · nothing was spent`, sound: 'success',
+    });
+    return runCheck(depth + 1, { count: dry.count + 1, spent: dry.spent + (facts.total ?? 0) });
+  }
 
   if (!pendingPurchase) {
     if (selection.kind === 'blackMarket') {
@@ -189,15 +314,20 @@ async function runCheck(depth = 0) {
       };
     } else {
       pendingPurchase = {
-        ...(selection.kind === 'bundle' ? { kind: 'bundle', targetQuantity: selection.targetQuantity } : {}),
+        ...(selection.kind === 'bundle' ? { kind: 'bundle', targetQuantity: selection.targetQuantity, bundleSig: bundleSignature(settings) } : {}),
         uid: selection.rule.uid, item: selection.item.id, name: selection.item.name, qty: selection.quantity,
-        ruleQuantity: selection.rule.quantity, mode: selection.rule.mode, key: selection.key,
+        price: selection.item.price, ruleQuantity: selection.rule.quantity, mode: selection.rule.mode, key: selection.key,
         slot: activeShop.slot, accountId, requestId: crypto.randomUUID()
       };
     }
     await storage.set({ pendingPurchase });
   }
-  const fresh = (await storage.get('settings')).settings;
+  const fresh = withBundleRule((await storage.get('settings')).settings);
+  // A cap lowered or a dry run switched on while this purchase was being prepared wins.
+  if (!recovering && JSON.stringify(normalizeSafety(fresh?.safety)) !== JSON.stringify(safety)) {
+    await storage.remove('pendingPurchase');
+    return status('waiting', 'Settings changed before the next purchase. The next check will use the new settings.');
+  }
   if (pendingPurchase.kind === 'blackMarket') {
     if (!fresh?.enabled || !sameBlackMarketSettings(fresh.blackMarket, pendingPurchase.marketSettings)) {
       if (!recovering) await storage.remove('pendingPurchase');
@@ -207,6 +337,11 @@ async function runCheck(depth = 0) {
     }
   } else {
     const freshRule = fresh?.rules?.find(rule => rule.uid === pendingPurchase.uid && rule.id === pendingPurchase.item);
+    // Bundle filters edited while this purchase was being prepared: the next check uses the new ones.
+    if (!recovering && pendingPurchase.kind === 'bundle' && pendingPurchase.bundleSig !== undefined && pendingPurchase.bundleSig !== bundleSignature(fresh)) {
+      await storage.remove('pendingPurchase');
+      return status('waiting', 'Settings changed before the next purchase. The next check will use the new settings.');
+    }
     if (!fresh?.enabled || !freshRule || freshRule.quantity !== pendingPurchase.ruleQuantity || freshRule.mode !== pendingPurchase.mode) {
       if (!recovering) await storage.remove('pendingPurchase');
       return status('waiting', recovering
@@ -220,8 +355,62 @@ async function runCheck(depth = 0) {
     accountId,
     purchase: pendingPurchase
   });
-  if (!(await recordResult(pendingPurchase, result || {}, progress, recovering))) return;
+  if (!(await recordResult(pendingPurchase, result || {}, progress, recovering, sessionId))) return;
   return runCheck(depth + 1);
+}
+// Watches the Black Market for offers matching the player's filters when auto-buy is not
+// already buying there, and announces each market visit's matches once.
+async function runBlackWatch() {
+  const { uiPrefs, settings, blackAlert } = await storage.get(['uiPrefs', 'settings', 'blackAlert']);
+  if (!wantsEvent(normalizeUiPrefs(uiPrefs), 'black')) return;
+  if (settings?.enabled && settings?.blackMarket?.enabled === true) return;
+  const tab = await getTab();
+  if (!tab?.identity?.user?.id) return;
+  // Read-only: no wallet is needed to see what is on offer.
+  const loaded = await site(tab.id, { type: 'SITE_BLACK_MARKET' });
+  const market = loaded?.ok && loaded.data && typeof loaded.data === 'object' ? loaded.data : null;
+  if (!market) return;
+  const key = shopKey(market);
+  if (!market.open || !key) {
+    if (blackAlert) await storage.remove('blackAlert');
+    return;
+  }
+  const matches = blackMarketMatches(settings?.blackMarket, market, await blackCatalogPromise);
+  const known = blackAlert?.key === key && Array.isArray(blackAlert.ids) ? blackAlert.ids : [];
+  if (!matches.length || matches.every(match => known.includes(match.id))) return;
+  await storage.set({ blackAlert: { key, ids: [...new Set([...known, ...matches.map(match => match.id)])] } });
+  await notifier.announce('black', {
+    title: 'Black Market has a match',
+    message: matches.map(match => `${match.name} (${formatEp(match.price)} EP)`).join(', '),
+    sound: 'alert',
+    flash: 'Black Market match!',
+  });
+}
+function watchBlackMarket() {
+  if (!blackWatch) blackWatch = runBlackWatch().catch(() => {}).finally(() => { blackWatch = null; });
+  return blackWatch;
+}
+async function marketStatusReply() {
+  const tab = await getTab();
+  if (!tab) return marketStatus({ tab: null });
+  const signedIn = !!tab.identity?.user?.id;
+  const [shop, black] = await Promise.all([site(tab.id, { type: 'SITE_SHOP' }), site(tab.id, { type: 'SITE_BLACK_MARKET' })]);
+  const hasWallet = (shop?.ok && walletOf(shop.data) != null) || (black?.ok && walletOf(black.data) != null);
+  const inventory = signedIn && !hasWallet ? await site(tab.id, { type: 'SITE_INVENTORY' }) : null;
+  return marketStatus({ tab: { signedIn }, shop, black, inventory });
+}
+async function focusGameTab(notificationId) {
+  if (typeof notificationId !== 'string' || !notificationId.startsWith('rngidle-')) return;
+  try {
+    if (notificationId.startsWith('rngidle-glitch-')) await storage.set({ uiTab: 'glitch', uiOpen: true });
+    const tabs = await chrome.tabs.query({ url: GAME_TABS });
+    const tab = tabs.find(entry => entry.active) ?? tabs[0];
+    if (tab?.id != null) {
+      await chrome.tabs.update(tab.id, { active: true });
+      if (tab.windowId != null) await chrome.windows?.update(tab.windowId, { focused: true });
+    }
+  } catch { /* the tab or window may have closed */ }
+  try { await chrome.notifications.clear(notificationId); } catch { /* already gone */ }
 }
 function check() {
   if (!running) running = runCheck().catch(error => status('error', `Shop check failed: ${error?.message || 'unknown error'}`)).finally(() => { running = null; });
@@ -230,11 +419,46 @@ function check() {
 async function ensureAlarm() {
   if (!(await chrome.alarms.get(ALARM))) await chrome.alarms.create(ALARM, { periodInMinutes: 1 });
 }
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) void check(); });
-chrome.runtime.onInstalled.addListener(() => { void ensureAlarm(); });
-chrome.runtime.onStartup.addListener(() => { void ensureAlarm(); void check(); });
+const glitch = createGlitchService({
+  storage, getTab, site, activity, loadNames: () => glitchNamesPromise, announce: notifier.announce,
+});
+chrome.alarms.onAlarm.addListener(async alarm => {
+  if (alarm.name === ALARM) {
+    await check();
+    await watchBlackMarket();
+  } else if (alarm.name === GLITCH_ALARM) await glitch.watch().catch(() => {});
+});
+chrome.notifications?.onClicked?.addListener(id => focusGameTab(id));
+const updates = createUpdateService({ storage, chrome, getTab, site });
+registerMenuCommands({ storage, chrome });
+chrome.runtime.onInstalled.addListener(() => { void ensureAlarm(); void glitch.syncAlarm().catch(() => {}); });
+chrome.runtime.onStartup.addListener(() => {
+  void ensureAlarm();
+  void glitch.syncAlarm().catch(() => {});
+  // A new browser session: the storage.local fallback session id must not carry over.
+  void storage.remove('sessionId').catch(() => {}).then(() => check());
+});
+// The tier is used as a CSS attribute value, so only plain ids pass (e.g. 'numinous_ineffability_303').
+const RARITY_TIER = /^[a-z][a-z0-9_]{2,31}$/;
+// The game's pill labels are upper case ('COSMIC HORROR'); the menu shows 'Cosmic Horror'.
+const titleCase = text => text.replaceAll('_', ' ').toLowerCase().replace(/(^|[\s-])\p{L}/gu, start => start.toUpperCase());
+function checkedRarity(rarity) {
+  const tier = typeof rarity?.tier === 'string' ? rarity.tier : '';
+  if (!RARITY_TIER.test(tier)) return null;
+  const given = typeof rarity.label === 'string' ? rarity.label.trim() : '';
+  const label = titleCase(given && given.length <= 40 ? given : tier);
+  return { tier, label: label.slice(0, 40) };
+}
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === 'SITE_READY') { void check(); return; }
+  if (message?.type === 'SITE_READY') { void check(); void updates.onSiteReady().catch(() => {}); return; }
+  const updateReply = updates.handle(message);
+  if (updateReply) { updateReply.then(sendResponse, () => sendResponse({ ok: false, error: 'Could not check for updates.' })); return true; }
+  const glitchReply = glitch.handle(message);
+  if (glitchReply) { glitchReply.then(sendResponse); return true; }
+  if (message?.type === 'MARKET_STATUS') {
+    marketStatusReply().then(sendResponse, () => sendResponse({ ok: false, error: 'Could not load the market status.' }));
+    return true;
+  }
   if (message?.type === 'CLEAR_BLACK_MARKET_UNCERTAINTY') {
     (async () => {
       if (running) await running;
@@ -261,7 +485,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
               const engine = await import('/engine.js');
               const result = engine.composeRollResult(number);
-              return { ok: true, result };
+              // The game's own rarity for this roll; the checker still works without it.
+              let rarity = null;
+              try {
+                let tier = engine.getCardRarityTier?.(result?.totalScore, result?.number ?? number);
+                if (tier === 'transcendant') tier = 'transcendent';
+                if (typeof tier === 'string' && tier) {
+                  const label = engine.RARITY_PALETTE?.[tier]?.pill?.label;
+                  rarity = { tier, label: typeof label === 'string' ? label : '' };
+                }
+              } catch { rarity = null; }
+              return { ok: true, result, rarity };
             } catch (error) {
               return { ok: false, error: error?.message || 'The game could not analyze this number.' };
             }
@@ -276,6 +510,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true, result: {
           number: result.number,
           totalScore: result.totalScore,
+          rarity: checkedRarity(response.rarity),
           badges: result.badges.map(badge => ({
             id: String(badge.id ?? ''), label: String(badge.label ?? badge.id ?? ''),
             emoji: String(badge.emoji ?? ''), score: Number(badge.score) || 0,
@@ -291,7 +526,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'SETTINGS_CHANGED') {
     (async () => {
       const { settings } = await storage.get('settings');
-      if (!settings?.rules?.length && settings?.blackMarket?.enabled !== true) await storage.remove('boundAccount');
+      if (!rulesOf(settings).length && settings?.blackMarket?.enabled !== true) await storage.remove('boundAccount');
       await ensureAlarm();
       await check();
     })().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));

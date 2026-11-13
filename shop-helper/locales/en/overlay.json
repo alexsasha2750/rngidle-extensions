@@ -1,0 +1,26 @@
+{
+  "menuLabel": "RNGidle Shop Helper",
+  "openMenu": "Open RNGidle Shop Helper",
+  "hideMenu": "Hide RNGidle Shop Helper",
+  "tipOn": "Shop Helper {version} · auto-buy on",
+  "tipOff": "Shop Helper {version} · auto-buy off",
+  "tipGlitch": "Glitch has something you want",
+  "tipUpdate": "Shop Helper {version} is available",
+  "dragHint": "Drag to move",
+  "moveHint": "Drag the button, or hold Shift and use the arrow keys, to move it.",
+  "glitchTitle": "Glitch is here",
+  "glitchText": {
+    "one": "One of the wares you want is on his shelf.",
+    "other": "{count} of the wares you want are on his shelf."
+  },
+  "glitchOpen": "Open",
+  "glitchDismiss": "Dismiss",
+  "updateTitle": "Update available",
+  "updateText": "Shop Helper {version} is ready to download.",
+  "updateDownload": "Download",
+  "updateLater": "Not now",
+  "updateDetails": "Details",
+  "updateDownloading": "Downloading…",
+  "updateStarted": "The download has started.",
+  "updateFailed": "The download did not start. Open Details to try again."
+}

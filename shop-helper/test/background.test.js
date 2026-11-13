@@ -37,7 +37,11 @@ test('background buys eligible selections safely and recovers a lost response', 
     scripting: { executeScript: async request => {
       assert.equal(request.world, 'MAIN');
       assert.deepEqual(request.args, ['1+2i+3j+4k']);
-      return [{ result: { ok: true, result: { number: request.args[0], totalScore: 42, badges: [{ id: 'A', label: 'Example', emoji: '✦', score: 42, isScoring: true }] } } }];
+      // Runs the real in-page function, with the game's engine swapped for globalThis.fakeGameEngine.
+      const source = String(request.func);
+      assert.ok(source.includes("import('/engine.js')"));
+      const func = (0, eval)(`(${source.replace("import('/engine.js')", 'Promise.resolve(globalThis.fakeGameEngine)')})`);
+      return [{ result: await func(...request.args) }];
     } },
     tabs: {
       query: async () => openTab ? [{ id: 1 }] : [],
@@ -184,10 +188,35 @@ test('background buys eligible selections safely and recovers a lost response', 
   assert.equal(blackCompleted.size, 1, 'retry does not repeat the Black Market charge');
   assert.equal(market.wallet.effective, walletBeforeBlackPurchase - 75);
   assert.equal(data.pendingPurchase, undefined);
-  const preview = await new Promise(resolve => events.message({ type: 'CHECK_NUMBER', number: ' 1+2i+3j+4k ' }, {}, resolve));
+  const rarityCalls = [];
+  const composeRollResult = number => ({ number, totalScore: 42, badges: [{ id: 'A', label: 'Example', emoji: '✦', score: 42, isScoring: true }] });
+  globalThis.fakeGameEngine = {
+    composeRollResult,
+    getCardRarityTier: (...args) => { rarityCalls.push(args); return 'cosmic_horror'; },
+    RARITY_PALETTE: { cosmic_horror: { pill: { label: 'COSMIC HORROR' } } },
+  };
+  const checkNumber = () => new Promise(resolve => events.message({ type: 'CHECK_NUMBER', number: ' 1+2i+3j+4k ' }, {}, resolve));
+  const preview = await checkNumber();
   assert.equal(preview.ok, true);
   assert.equal(preview.result.number, '1+2i+3j+4k');
   assert.equal(preview.result.totalScore, 42);
+  assert.deepEqual(preview.result.rarity, { tier: 'cosmic_horror', label: 'Cosmic Horror' }, 'the reply carries the game’s own rarity');
+  assert.deepEqual(rarityCalls, [[42, '1+2i+3j+4k']], 'rarity is asked for with the roll’s score and number');
+  globalThis.fakeGameEngine = { composeRollResult, getCardRarityTier: () => 'transcendant' };
+  assert.deepEqual((await checkNumber()).result.rarity, { tier: 'transcendent', label: 'Transcendent' }, 'the old spelling is normalised and labelled from the tier');
+  globalThis.fakeGameEngine = { composeRollResult };
+  const withoutRarity = await checkNumber();
+  assert.equal(withoutRarity.ok, true, 'an engine without rarity still checks numbers');
+  assert.equal(withoutRarity.result.rarity, null);
+  assert.equal(withoutRarity.result.totalScore, 42);
+  for (const getCardRarityTier of [() => { throw new Error('boom'); }, () => 'x" onclick="', () => undefined]) {
+    globalThis.fakeGameEngine = { composeRollResult, getCardRarityTier };
+    const reply = await checkNumber();
+    assert.equal(reply.ok, true);
+    assert.equal(reply.result.rarity, null, 'a failing or odd rarity is dropped');
+  }
+  globalThis.fakeGameEngine = { composeRollResult, getCardRarityTier: () => 'epic', RARITY_PALETTE: { epic: { pill: { label: 'E'.repeat(41) } } } };
+  assert.deepEqual((await checkNumber()).result.rarity, { tier: 'epic', label: 'Epic' }, 'an overlong label falls back to the tier name');
   const empty = await new Promise(resolve => events.message({ type: 'CHECK_NUMBER', number: '  ' }, {}, resolve));
   assert.equal(empty.ok, false);
   const tooLong = await new Promise(resolve => events.message({ type: 'CHECK_NUMBER', number: '1'.repeat(251) }, {}, resolve));

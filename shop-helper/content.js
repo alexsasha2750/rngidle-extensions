@@ -1,4 +1,8 @@
 (() => {
+  const GLITCH_ITEM = /^[a-z0-9_]{1,48}$/;
+  const validTrialId = value => (typeof value === 'string' && value.length > 0 && value.length <= 120) || (typeof value === 'number' && Number.isFinite(value));
+  const validAnswer = value => (typeof value === 'string' && value.length <= 200) || (typeof value === 'number' && Number.isFinite(value));
+
   async function jsonRequest(path, options = {}) {
     const response = await fetch(path, {
       method: options.body ? 'POST' : 'GET',
@@ -53,11 +57,37 @@
       }
       return jsonRequest('/api/black-market/buy', { body: { item, force: false, requestId } });
     }
+    if (message.type === 'SITE_GLITCH') return jsonRequest('/api/glitch');
+    if (message.type === 'SITE_GLITCH_TRIAL') {
+      const { item } = message;
+      if (typeof item !== 'string' || !GLITCH_ITEM.test(item)) return { ok: false, status: 400, error: 'Invalid Glitch request.' };
+      return jsonRequest('/api/glitch/trial', { body: { item } });
+    }
+    if (message.type === 'SITE_GLITCH_ANSWER') {
+      const { id, answer } = message;
+      if (!validTrialId(id) || !validAnswer(answer)) return { ok: false, status: 400, error: 'Invalid Glitch answer.' };
+      return jsonRequest('/api/glitch/trial/answer', { body: { id, answer } });
+    }
+    if (message.type === 'SITE_GLITCH_BUY') {
+      const identity = await jsonRequest('/api/identity');
+      if (!identity.ok) return identity;
+      if (!identity.data.user?.id || String(identity.data.user.id) !== message.accountId) {
+        return { ok: false, status: 409, error: 'The signed-in account changed before purchase.' };
+      }
+      const { item, trial, requestId } = message.purchase || {};
+      if (typeof item !== 'string' || !GLITCH_ITEM.test(item) || !validTrialId(trial) || typeof requestId !== 'string') {
+        return { ok: false, status: 400, error: 'Invalid Glitch purchase request.' };
+      }
+      return jsonRequest('/api/glitch/buy', { body: { item, trial, force: false, requestId } });
+    }
     return { ok: false, status: 400, error: 'Unknown request.' };
   }
 
+  const TYPES = new Set(['SITE_IDENTITY', 'SITE_SHOP', 'SITE_INVENTORY', 'SITE_CATALOG_HASH', 'SITE_BUY', 'SITE_BLACK_MARKET',
+    'SITE_BUY_BLACK_MARKET', 'SITE_GLITCH', 'SITE_GLITCH_TRIAL', 'SITE_GLITCH_ANSWER', 'SITE_GLITCH_BUY']);
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (sender.id !== chrome.runtime.id || !message || !['SITE_IDENTITY', 'SITE_SHOP', 'SITE_INVENTORY', 'SITE_CATALOG_HASH', 'SITE_BUY', 'SITE_BLACK_MARKET', 'SITE_BUY_BLACK_MARKET'].includes(message.type)) return;
+    if (sender.id !== chrome.runtime.id || !message || !TYPES.has(message.type)) return;
     handle(message).then(sendResponse, error => sendResponse({ ok: false, error: error?.message || 'Network request failed.' }));
     return true;
   });

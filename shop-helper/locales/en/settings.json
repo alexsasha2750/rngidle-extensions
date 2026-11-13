@@ -1,0 +1,6 @@
+{
+  "potionNumbersTitle": "Potion results",
+  "potionNumbersLabel": "Show the number a potion found",
+  "potionNumbersHelp": "Hover a potion’s result in the bulk-roll potion table and the number its best roll ended up as is added right after the EP. Works for variant potions and badge potions.",
+  "potionNumbersFine": "Only changes the hover text on your screen, right away. Nothing is sent to the game. If the game hides a number (a sealed bulk roll), there is nothing to add."
+}

@@ -26,6 +26,8 @@ export async function savePrefs(patch) {
     ...patch,
     channels: { ...current.channels, ...patch.channels },
     events: { ...current.events, ...patch.events },
+    launcher: { ...current.launcher, ...patch.launcher },
+    updates: { ...current.updates, ...patch.updates },
   });
   set(next);
   try { await chrome.storage.local.set({ uiPrefs: next }); } catch { /* the in-memory copy still applies */ }

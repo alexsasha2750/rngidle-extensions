@@ -8,6 +8,8 @@ import { addHistory } from './history.js';
 import { createNotifier, formatEp, GAME_TABS } from './notify.js';
 import { marketStatus, walletOf } from './market.js';
 import { normalizeUiPrefs, wantsEvent } from './ui-prefs.js';
+import { createUpdateService } from './update-service.js';
+import { registerMenuCommands } from './menu-commands.js';
 
 const ALARM = 'check-shop';
 const storage = chrome.storage.local;
@@ -419,6 +421,8 @@ chrome.alarms.onAlarm.addListener(async alarm => {
   } else if (alarm.name === GLITCH_ALARM) await glitch.watch().catch(() => {});
 });
 chrome.notifications?.onClicked?.addListener(id => focusGameTab(id));
+const updates = createUpdateService({ storage, chrome, getTab, site });
+registerMenuCommands({ storage, chrome });
 chrome.runtime.onInstalled.addListener(() => { void ensureAlarm(); void glitch.syncAlarm().catch(() => {}); });
 chrome.runtime.onStartup.addListener(() => {
   void ensureAlarm();
@@ -427,7 +431,9 @@ chrome.runtime.onStartup.addListener(() => {
   void storage.remove('sessionId').catch(() => {}).then(() => check());
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === 'SITE_READY') { void check(); return; }
+  if (message?.type === 'SITE_READY') { void check(); void updates.onSiteReady().catch(() => {}); return; }
+  const updateReply = updates.handle(message);
+  if (updateReply) { updateReply.then(sendResponse, () => sendResponse({ ok: false, error: 'Could not check for updates.' })); return true; }
   const glitchReply = glitch.handle(message);
   if (glitchReply) { glitchReply.then(sendResponse); return true; }
   if (message?.type === 'MARKET_STATUS') {

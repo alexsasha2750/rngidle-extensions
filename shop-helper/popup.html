@@ -6,14 +6,19 @@
     <meta name="color-scheme" content="dark light">
     <title>RNGidle Shop Helper</title>
     <script src="popup-mode.js"></script>
+    <script src="i18n.js"></script>
     <script src="sound.js"></script>
     <link rel="stylesheet" href="popup.css">
+    <link rel="stylesheet" href="popup-update.css">
+    <link rel="stylesheet" href="popup-launcher.css">
     <script src="popup.js" defer></script>
     <script src="popup-ui.js" defer></script>
     <script type="module" src="popup-glitch.js"></script>
     <script type="module" src="popup-market.js"></script>
     <script type="module" src="popup-history.js"></script>
     <script type="module" src="popup-settings.js"></script>
+    <script type="module" src="popup-update.js"></script>
+    <script type="module" src="popup-launcher.js"></script>
   </head>
   <body>
     <main class="app">
@@ -27,11 +32,12 @@
             <p>for RNGidle</p>
           </div>
         </div>
-        <span class="version-pill" id="app-version" title="Extension version">v…</span>
+        <button class="version-pill" id="app-version" type="button" title="Extension version">v…</button>
         <button class="icon-button hide-button" id="hide-panel" type="button" aria-label="Hide menu" title="Hide menu (Esc)" hidden>
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
         </button>
       </header>
+      <section class="update-panel" id="update-panel" aria-live="polite" hidden></section>
 
       <nav class="tabs" role="tablist" aria-label="Sections" data-index="0">
         <span class="tab-thumb" aria-hidden="true"></span>
@@ -448,6 +454,10 @@
               </label>
               <p class="fine-print">Only changes how the game looks on your screen, right away. His shop’s glitches, his arrival scene and his minigame are left as the game has them. Nothing is sent to the game.</p>
             </section>
+
+            <section class="card" id="launcher-card" aria-labelledby="launcher-heading"></section>
+
+            <section class="card" id="update-settings-card" aria-labelledby="update-settings-heading"></section>
 
             <section class="card" aria-labelledby="alerts-heading">
               <h2 id="alerts-heading">Alerts</h2>

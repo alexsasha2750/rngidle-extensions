@@ -16,7 +16,13 @@ test('every file the manifest references is packaged', () => {
     ...manifest.content_scripts.flatMap(script => script.js),
     ...manifest.web_accessible_resources.flatMap(entry => entry.resources),
   ];
-  for (const file of files) assert.ok(exists(file), `${file} is missing`);
+  for (const file of files) {
+    if (!file.includes('*')) { assert.ok(exists(file), `${file} is missing`); continue; }
+    // A glob such as locales/*/overlay.json must match at least one packaged file.
+    const [head, tail] = file.split('*');
+    const dirs = fs.readdirSync(new URL(head, root), { withFileTypes: true }).filter(entry => entry.isDirectory());
+    assert.ok(dirs.some(dir => exists(`${head}${dir.name}${tail}`)), `${file} matches nothing`);
+  }
 });
 
 test('the version shown in the menu is consistent', () => {
@@ -29,7 +35,7 @@ test('the in-game menu is wired up and limited to the game site', () => {
   assert.ok(manifest.content_scripts[0].js.includes('overlay.js'));
   assert.deepEqual(manifest.content_scripts[0].matches, ['https://rngidle.fun/*']);
   const [shared] = manifest.web_accessible_resources;
-  assert.deepEqual(shared.resources, ['popup.html']);
+  assert.deepEqual(shared.resources, ['popup.html', 'locales/*/overlay.json']);
   assert.deepEqual(shared.matches, ['https://rngidle.fun/*']);
   assert.ok(read('overlay.js').includes('popup.html?embedded=1'));
   assert.ok(read('overlay.js').includes('glitchAlert'), 'the in-game button should react to Glitch alerts');
@@ -63,7 +69,7 @@ test('the menu never uses blocking dialogs or HTML injection', () => {
 });
 
 test('sound and notifications are wired without widening access', () => {
-  assert.deepEqual(manifest.content_scripts[0].js, ['sound.js', 'calm.js', 'content.js', 'overlay.js'], 'sound.js must load before the overlay uses it');
+  assert.deepEqual(manifest.content_scripts[0].js, ['i18n.js', 'sound.js', 'calm.js', 'content.js', 'overlay.js'], 'sound.js must load before the overlay uses it');
   assert.ok(manifest.permissions.includes('notifications'));
   assert.deepEqual(manifest.host_permissions, ['https://rngidle.fun/*']);
   assert.ok(read('popup.html').includes('src="sound.js"'), 'the menu plays its own cues');

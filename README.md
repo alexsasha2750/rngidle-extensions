@@ -4,7 +4,8 @@ An experimental Chrome extension for [RNGidle](https://rngidle.fun/) with three 
 
 - **Auto-buy** automatically buys selected items and bundles from Glim's shop, and items from the Black Market, while an RNGidle tab is open.
 - **Glitch** shows Glitch's shelf, lets you pick what to try for, presents his timed trial questions for you to answer, and buys the ware once the game confirms you passed. It also can alert you when he visits.
-- **Number checker** previews the badges and EP a number would earn, without rolling.
+- **Number checker** previews the badges and EP a number would earn, without rolling, and shows its rarity.
+- **Updates and settings:** click the version number at the top of the menu to check for a newer release, and a setting can add the number a variant or badge potion found to the potion result's hover text.
 
 The menu opens from the toolbar icon **and** inside the game itself, so it stays open while you play. The Halloween shop is not supported.
 
@@ -23,15 +24,15 @@ The current version is shown at the top of the menu.
 
 The menu has five tabs. Your last tab, and whether the in-game menu is open, are remembered.
 
-- **Auto-buy** has a main **Automatic purchases** switch with connection status, a live **Shops right now** card, a collapsed **Safety** section (dry run and spending limit), then two sections: **Glim's shop** and **Black Market**. Changes apply when you choose **Save settings**.
+- **Auto-buy** has a main **Automatic purchases** switch with connection status, a live **Shops right now** card, a collapsed **Safety** section (dry run and spending limit), then three sections: **Glim's shop**, **Black Market** and **Bundles** (its own rules for Glim's current bundle, with a live preview). Changes apply when you choose **Save settings**.
 - **Glitch** shows his shelf and visit timer, with an optional alert and a trial you answer yourself (see below).
 - **Checker** previews a number; tap an example or a recent check to try it, and pin one to compare against the next.
 - **History** lists what the extension bought, or tried to buy, with totals.
-- **Settings** has the theme, compact layout, alerts and sounds, and settings backup.
+- **Settings** has the theme, compact layout, the floating button's look and position, update checks, the potion-number option, alerts and sounds, and settings backup.
 
 ### In-game menu
 
-- The floating button opens and closes the menu. A small dot on it shows auto-buy status: green is running, amber is waiting (for example, no game tab or not signed in), red is an error, and no dot means paused.
+- The floating button opens and closes the menu. Drag it to move it; in Settings it can fade until pointed at, tuck into a screen edge or shrink. `Alt+Shift+H` also opens and closes the menu. A small dot on it shows auto-buy status: green is running, amber is waiting (for example, no game tab or not signed in), red is an error, and no dot means paused.
 - Hide the menu with the **▾** button in its header, by pressing **Esc**, or by clicking the floating button again. It stays hidden until you open it.
 - To remove the floating button completely, turn off **In-game button** at the bottom of the menu. Reopen the menu from the toolbar icon, where you can turn the button back on.
 - The menu opens in a panel that fits phones and small windows, and animations respect your system's reduced-motion setting.

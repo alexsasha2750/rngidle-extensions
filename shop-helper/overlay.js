@@ -517,7 +517,10 @@
     if (!geo || !current || !state.launcher || press) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     press = { id: event.pointerId, x: event.clientX, y: event.clientY, left: current.left, top: current.top, moved: false };
-    try { launcher.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+    // A finger is captured by the button already; capturing it again loses Chrome's tap-to-click.
+    if (event.pointerType !== "touch") {
+      try { launcher.setPointerCapture(event.pointerId); } catch { /* the pointer is already gone */ }
+    }
     document.addEventListener("selectstart", blockSelection, true);
     setPeek(true);
   });

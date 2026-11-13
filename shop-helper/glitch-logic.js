@@ -4,6 +4,7 @@
 export const ITEM_ID = /^[a-z0-9_]{1,48}$/;
 export const MAX_ANSWER_LENGTH = 200;
 const MAX_WANTED = 24;
+const MAX_NOTE = 80;
 
 export const REASONS = {
   away: 'Glitch is not here right now.',
@@ -37,17 +38,50 @@ export function normalizePrefs(value) {
   for (const id of Array.isArray(value?.itemIds) ? value.itemIds : []) {
     if (typeof id === 'string' && ITEM_ID.test(id) && !ids.includes(id) && ids.length < MAX_WANTED) ids.push(id);
   }
-  return { alert: value?.alert === true, itemIds: ids };
+  // A price ceiling and a short note per ware, kept only for valid ids.
+  const limits = {}, notes = {};
+  for (const [id, raw] of Object.entries(value?.limits && typeof value.limits === 'object' ? value.limits : {})) {
+    const limit = Number(raw);
+    if (ITEM_ID.test(id) && raw !== '' && raw !== null && Number.isFinite(limit) && limit > 0 && Object.keys(limits).length < MAX_WANTED * 2) limits[id] = limit;
+  }
+  for (const [id, raw] of Object.entries(value?.notes && typeof value.notes === 'object' ? value.notes : {})) {
+    const note = typeof raw === 'string' ? raw.trim().slice(0, MAX_NOTE) : '';
+    if (ITEM_ID.test(id) && note && Object.keys(notes).length < MAX_WANTED * 2) notes[id] = note;
+  }
+  return { alert: value?.alert === true, itemIds: ids, limits, notes };
 }
 
-// Wares worth an alert: buyable now, and ticked if the player ticked any.
+// Whether a ware's price is within the ceiling the player set for it (no ceiling means yes).
+export function withinLimit(prefs, offer) {
+  const limit = Number(prefs?.limits?.[offer?.id]);
+  if (!Number.isFinite(limit) || limit <= 0) return true;
+  return Number(offer?.price) <= limit;
+}
+
+// Wares worth an alert: buyable now and under any price ceiling, and ticked if the player ticked any.
 export function wantedAvailable(prefs, shop) {
   if (!shop?.open || !Array.isArray(shop.items)) return [];
-  const wanted = new Set(normalizePrefs(prefs).itemIds);
+  const clean = normalizePrefs(prefs);
+  const wanted = new Set(clean.itemIds);
   return shop.items
-    .filter(offer => offerState(offer, shop).buyable && (wanted.size === 0 || wanted.has(offer.id)))
+    .filter(offer => offerState(offer, shop).buyable && withinLimit(clean, offer) && (wanted.size === 0 || wanted.has(offer.id)))
     .map(offer => offer.id);
 }
+
+// What the ticked wares cost together against the player's EP. Wares that are gone are left out.
+export function planCost(offers, wallet) {
+  const live = (Array.isArray(offers) ? offers : []).filter(offer => offer && !offer.bought && Number(offer.left) > 0 && Number(offer.price) > 0);
+  const total = live.reduce((sum, offer) => sum + Number(offer.price), 0);
+  const have = Number.isFinite(wallet) && wallet >= 0 ? wallet : null;
+  return {
+    count: live.length,
+    total,
+    wallet: have,
+    short: have == null ? null : Math.max(0, total - have),
+    covered: have != null && total <= have,
+  };
+}
+
 
 export const visitKey = shop => (shop?.open ? String(shop.endsAt ?? shop.slot ?? '') : '');
 

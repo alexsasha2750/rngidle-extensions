@@ -5,13 +5,18 @@ import {
   isAnswer, interpretAnswer, ITEM_ID, normalizePrefs, normalizeShop, offerState, parseQuestion, REASONS,
   visitKey, wantedAvailable,
 } from './glitch-logic.js';
+import { addHistory } from './history.js';
 
 export const GLITCH_ALARM = 'glitch-watch';
 const REST_AFTER_BUSY = 3000;
 const BUY_ATTEMPTS = 3;
 const defaultSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const validPrice = value => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null);
 
-export function createGlitchService({ storage, getTab, site, activity, loadNames, sleep = defaultSleep }) {
+export function createGlitchService({ storage, getTab, site, activity, loadNames, sleep = defaultSleep, announce = async () => {} }) {
+  // Price of the ware each running trial is for, so the purchase history knows what was paid.
+  const trialPrices = new Map();
+
   async function readPrefs() {
     const { glitchPrefs } = await storage.get('glitchPrefs');
     return normalizePrefs(glitchPrefs);
@@ -53,7 +58,7 @@ export function createGlitchService({ storage, getTab, site, activity, loadNames
   // Keeps the stored alert in step with the shelf; only writes when something changed.
   async function applyAlert(shop, prefs) {
     const ids = prefs.alert ? wantedAvailable(prefs, shop) : [];
-    const { glitchAlert } = await storage.get('glitchAlert');
+    const { glitchAlert, glitchAnnounced } = await storage.get(['glitchAlert', 'glitchAnnounced']);
     if (!ids.length) {
       if (glitchAlert) await storage.remove('glitchAlert');
       await setBadge(false);
@@ -61,8 +66,28 @@ export function createGlitchService({ storage, getTab, site, activity, loadNames
     }
     const key = visitKey(shop);
     const next = { key, ids, endsAt: shop.endsAt, at: glitchAlert?.key === key ? glitchAlert.at : Date.now() };
-    if (JSON.stringify(glitchAlert) !== JSON.stringify(next)) await storage.set({ glitchAlert: next });
+    // `glitchAnnounced` outlives the alert, so a visit is announced once even if its alert comes and goes.
+    const fresh = glitchAlert?.key !== key && glitchAnnounced !== key;
+    const changes = {};
+    if (JSON.stringify(glitchAlert) !== JSON.stringify(next)) changes.glitchAlert = next;
+    if (fresh) changes.glitchAnnounced = key;
+    if (Object.keys(changes).length) await storage.set(changes);
     await setBadge(true);
+    if (fresh) await announceVisit(ids);
+  }
+
+  async function announceVisit(ids) {
+    try {
+      const names = await loadNames();
+      const wares = ids.map(id => names.get(id) || id).join(', ');
+      await announce('glitch', { title: 'Glitch is here', message: `${wares} on his shelf`, sound: 'alert', flash: 'Glitch is here!' });
+    } catch { /* an announcement is best effort */ }
+  }
+
+  async function recordHistory(entry) {
+    try {
+      await addHistory(storage, { source: 'glitch', qty: 1, ...entry });
+    } catch { /* history is informational; the purchase reply matters more */ }
   }
 
   async function status() {
@@ -92,12 +117,13 @@ export function createGlitchService({ storage, getTab, site, activity, loadNames
     }
     const question = parseQuestion(result.data);
     if (!question) return { ok: false, error: 'Glitch asked something this extension does not understand. Use his page in the game instead.' };
+    trialPrices.set(item, offer.price);
     return { ok: true, kind: 'question', question, price: offer.price };
   }
 
   // A passed trial is turned into the purchase right away, so closing the menu mid-way
   // cannot strand it. One request id covers every retry, so a lost reply never charges twice.
-  async function buy(ctx, item, trial) {
+  async function buy(ctx, item, trial, price = null) {
     const requestId = crypto.randomUUID();
     let last;
     for (let attempt = 0; attempt < BUY_ATTEMPTS; attempt++) {
@@ -110,15 +136,19 @@ export function createGlitchService({ storage, getTab, site, activity, loadNames
     const name = names.get(item) || item;
     if (last?.ok) {
       await activity(`Bought ${name} from Glitch.`);
+      await recordHistory({ result: 'bought', item, name, price });
       const refreshed = await loadShop(ctx.tab.id);
       if (refreshed.shop) await applyAlert(refreshed.shop, await readPrefs());
       return { ok: true, kind: 'bought', item };
     }
     if (last?.status >= 400 && last.status < 500 && last.status !== 429) {
       await activity(`${name}: Glitch purchase declined (${last.error}).`);
-      return { ok: true, kind: 'declined', item, error: last.error || 'Glitch declined the purchase.' };
+      const error = last.error || 'Glitch declined the purchase.';
+      await recordHistory({ result: 'declined', item, name, price, message: `Glitch declined the purchase: ${error}` });
+      return { ok: true, kind: 'declined', item, error };
     }
     await activity(`${name}: Glitch purchase result unknown. Check your inventory.`);
+    await recordHistory({ result: 'uncertain', item, name, price, message: 'The result is unknown. Check your inventory.' });
     return { ok: true, kind: 'uncertain', item, error: 'The result is unknown. Check your inventory before trying again.' };
   }
 
@@ -133,9 +163,17 @@ export function createGlitchService({ storage, getTab, site, activity, loadNames
     const result = await site(ctx.tab.id, { type: 'SITE_GLITCH_ANSWER', id, answer: value });
     if (!result?.ok) return { ok: false, status: result?.status, error: result?.error || 'Could not send the answer.' };
     const outcome = interpretAnswer(result.data);
-    if (outcome.kind === 'failed') return { ok: true, kind: 'failed', late: outcome.late, answer: outcome.answer, rest: outcome.rest };
+    if (outcome.kind === 'failed') {
+      trialPrices.delete(item);
+      return { ok: true, kind: 'failed', late: outcome.late, answer: outcome.answer, rest: outcome.rest };
+    }
     if (outcome.kind === 'next') return { ok: true, kind: 'question', question: outcome.question };
-    if (outcome.kind === 'passed') return buy(ctx, item, outcome.id);
+    if (outcome.kind === 'passed') {
+      // The price seen when this worker started the trial wins; the menu's copy is a fallback.
+      const price = validPrice(trialPrices.get(item)) ?? validPrice(message.price);
+      trialPrices.delete(item);
+      return buy(ctx, item, outcome.id, price);
+    }
     return { ok: false, error: 'Glitch sent a reply this extension does not understand. Check the game before trying again.' };
   }
 

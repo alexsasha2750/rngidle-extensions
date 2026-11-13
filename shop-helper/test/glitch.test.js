@@ -46,12 +46,14 @@ function harness(over = {}) {
       default: return { ok: false, error: 'unexpected ' + message.type };
     }
   };
+  const announced = [];
   const service = createGlitchService({
     storage, site, activity: async text => activities.push(text), sleep: async () => {},
     getTab: async () => world.tab,
     loadNames: async () => new Map([['bitflip', 'Function Error'], ['glitch', 'Glitch Potion']]),
+    announce: async (event, info) => { announced.push({ event, ...info }); },
   });
-  return { service, data, writes, world, activities, badge, alarms, ask: message => service.handle(message) };
+  return { service, data, writes, world, activities, badge, alarms, announced, ask: message => service.handle(message) };
 }
 const types = world => world.sent.map(message => message.type);
 
@@ -249,4 +251,90 @@ test('only Glitch messages are handled here', () => {
   const h = harness();
   assert.equal(h.service.handle({ type: 'SITE_READY' }), null);
   assert.equal(h.service.handle(undefined), null);
+});
+
+test('a visit is announced once, never again for the same visit, and never with alerts off', async () => {
+  const h = harness({ storage: { glitchPrefs: { alert: true, itemIds: ['glitch', 'bitflip'] } } });
+  await h.service.watch();
+  assert.deepEqual(h.announced, [{
+    event: 'glitch', title: 'Glitch is here', message: 'Function Error, Glitch Potion on his shelf', sound: 'alert', flash: 'Glitch is here!',
+  }]);
+  await h.service.watch();
+  await h.ask({ type: 'GLITCH_STATUS' });
+  assert.equal(h.announced.length, 1, 'the same visit is not repeated');
+  h.world.shop.open = false;
+  await h.service.watch();
+  h.world.shop.open = true;
+  await h.service.watch();
+  assert.equal(h.announced.length, 1, 'an alert that comes back within the same visit stays quiet');
+  h.world.shop.endsAt = 199000;
+  await h.service.watch();
+  assert.equal(h.announced.length, 2, 'the next visit is announced');
+
+  const off = harness({ storage: { glitchPrefs: { alert: false, itemIds: [] } } });
+  await off.service.watch();
+  await off.ask({ type: 'GLITCH_STATUS' });
+  assert.equal(off.announced.length, 0);
+  const nothingWanted = harness({ storage: { glitchPrefs: { alert: true, itemIds: ['overflow'] } } });
+  nothingWanted.world.shop.items[2].left = 0;
+  await nothingWanted.service.watch();
+  assert.equal(nothingWanted.announced.length, 0);
+});
+
+test('announcing is optional and a failing announcer never breaks the watch', async () => {
+  const h = harness();
+  const plain = createGlitchService({
+    storage: { get: async () => ({ glitchPrefs: { alert: true, itemIds: [] } }), set: async () => {}, remove: async () => {} },
+    site: async () => ({ ok: true, data: structuredClone(h.world.shop) }), activity: async () => {},
+    getTab: async () => h.world.tab, loadNames: async () => new Map(),
+  });
+  await plain.watch();
+  const angry = createGlitchService({
+    storage: { get: async () => ({ glitchPrefs: { alert: true, itemIds: [] } }), set: async () => {}, remove: async () => {} },
+    site: async () => ({ ok: true, data: structuredClone(h.world.shop) }), activity: async () => {},
+    getTab: async () => h.world.tab, loadNames: async () => new Map(), announce: async () => { throw new Error('boom'); },
+  });
+  await angry.watch();
+});
+
+test('Glitch purchases go into the history with the price of the trial, and are not announced', async () => {
+  const h = harness();
+  await h.ask({ type: 'GLITCH_TRIAL_START', item: 'bitflip' });
+  h.world.answers.push({ ok: true, data: { ok: true, passed: true, id: 'p' } });
+  await h.ask({ type: 'GLITCH_TRIAL_ANSWER', item: 'bitflip', id: 'q', answer: 'x', price: 1 });
+  assert.equal(h.data.history.length, 1);
+  const [entry] = h.data.history;
+  assert.equal(typeof entry.id, 'string');
+  assert.ok(entry.time > 0);
+  assert.deepEqual({ ...entry, id: undefined, time: undefined }, {
+    id: undefined, time: undefined, source: 'glitch', result: 'bought', item: 'bitflip', name: 'Function Error', qty: 1,
+    price: 300_000_000, total: 300_000_000,
+  }, 'the price seen when the trial started wins over the menu');
+  assert.deepEqual(h.activities, ['Bought Function Error from Glitch.'], 'the activity log is unchanged');
+  assert.ok(!h.announced.some(item => item.event === 'purchase'), 'a manual purchase is not announced');
+
+  const fromMenu = harness();
+  fromMenu.world.answers.push({ ok: true, data: { ok: true, passed: true, id: 'p' } });
+  await fromMenu.ask({ type: 'GLITCH_TRIAL_ANSWER', item: 'glitch', id: 'q', answer: 'x', price: 23_000_000_000 });
+  assert.equal(fromMenu.data.history[0].price, 23_000_000_000, 'the menu can supply the price');
+
+  const unknown = harness();
+  unknown.world.answers.push({ ok: true, data: { ok: true, passed: true, id: 'p' } });
+  unknown.world.buyReplies.push({ ok: false, error: 'net' }, { ok: false, error: 'net' }, { ok: false, error: 'net' });
+  await unknown.ask({ type: 'GLITCH_TRIAL_ANSWER', item: 'glitch', id: 'q', answer: 'x', price: 'free' });
+  assert.deepEqual([unknown.data.history[0].result, unknown.data.history[0].price, unknown.data.history[0].total], ['uncertain', null, null]);
+  assert.match(unknown.data.history[0].message, /Check your inventory/);
+
+  const declined = harness();
+  await declined.ask({ type: 'GLITCH_TRIAL_START', item: 'glitch' });
+  declined.world.answers.push({ ok: true, data: { ok: true, passed: true, id: 'p' } });
+  declined.world.buyReplies.push({ ok: false, status: 402, error: 'Not enough EP.' });
+  await declined.ask({ type: 'GLITCH_TRIAL_ANSWER', item: 'glitch', id: 'q', answer: 'x' });
+  assert.equal(declined.data.history[0].result, 'declined');
+  assert.equal(declined.data.history[0].price, 23_000_000_000);
+  assert.match(declined.data.history[0].message, /Not enough EP/);
+
+  const failed = harness();
+  await failed.ask({ type: 'GLITCH_TRIAL_ANSWER', item: 'bitflip', id: 'q', answer: 'x' });
+  assert.equal(failed.data.history, undefined, 'a failed trial buys nothing and records nothing');
 });

@@ -3,13 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="dark light">
     <title>RNGidle Shop Helper</title>
     <script src="popup-mode.js"></script>
+    <script src="sound.js"></script>
     <link rel="stylesheet" href="popup.css">
     <script src="popup.js" defer></script>
     <script src="popup-ui.js" defer></script>
     <script type="module" src="popup-glitch.js"></script>
+    <script type="module" src="popup-market.js"></script>
+    <script type="module" src="popup-history.js"></script>
+    <script type="module" src="popup-settings.js"></script>
   </head>
   <body>
     <main class="app">
@@ -43,6 +47,14 @@
           <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M9 4 7 20M17 4l-2 16M4 9h16M3.5 15h16"></path></svg>
           <span>Checker</span>
         </button>
+        <button class="tab" id="tab-history" type="button" role="tab" aria-selected="false" aria-controls="panel-history" data-tab="history" tabindex="-1">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+          <span>History</span>
+        </button>
+        <button class="tab" id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" tabindex="-1">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg>
+          <span>Settings</span>
+        </button>
       </nav>
 
       <div class="viewport">
@@ -70,7 +82,63 @@
               <p class="run-message" id="run-message" hidden></p>
               <p class="meta">Last check · <strong id="last-check">Not checked yet</strong></p>
               <p class="notice notice-warn notice-inline"><strong>Spends EP automatically</strong> while an RNGidle tab is open and you are signed in.</p>
+              <p class="notice notice-info notice-inline" id="dry-run-notice" hidden><strong>Dry run is on.</strong> Nothing is spent; matches are only logged.</p>
             </section>
+
+            <section class="card market-card" id="market-card" aria-labelledby="market-heading">
+              <div class="section-head">
+                <div>
+                  <h2 id="market-heading">Shops right now</h2>
+                  <p id="market-sub">Checking the game…</p>
+                </div>
+                <span class="count-badge" id="market-wallet">EP —</span>
+              </div>
+              <div class="market-grid">
+                <div class="market-tile" id="market-shop">
+                  <span class="market-label">Glim’s shop</span>
+                  <strong id="market-shop-state">—</strong>
+                  <span class="market-clock" id="market-shop-clock"></span>
+                </div>
+                <div class="market-tile" id="market-black">
+                  <span class="market-label">Black Market</span>
+                  <strong id="market-black-state">—</strong>
+                  <span class="market-clock" id="market-black-clock"></span>
+                </div>
+              </div>
+              <div class="market-offers" id="market-offers-wrap" hidden>
+                <h3>On the Black Market now</h3>
+                <ul class="offer-list" id="market-offers"></ul>
+              </div>
+            </section>
+
+            <details class="card activity-card safety-card" id="safety-card">
+              <summary><span>Safety</span><span class="summary-note" id="safety-summary">Off</span><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary>
+              <div class="safety-body">
+                <p class="fine-print">Saved with the rest of your auto-buy settings.</p>
+                <label class="filter-option" for="dry-run">
+                  <input id="dry-run" type="checkbox" disabled>
+                  <span><strong>Dry run</strong><small>Show what would be bought without spending any EP.</small></span>
+                </label>
+                <label class="filter-option" for="cap-enabled">
+                  <input id="cap-enabled" type="checkbox" disabled>
+                  <span><strong>Spending limit</strong><small>Auto-buy stops once it has spent this much EP. Glitch purchases don’t count.</small></span>
+                </label>
+                <div class="cap-fields">
+                  <label class="field-label" for="cap-amount">
+                    <span>Limit (EP)</span>
+                    <input id="cap-amount" type="number" min="0" step="any" inputmode="decimal" value="0" aria-label="Spending limit in EP" disabled>
+                  </label>
+                  <label class="field-label" for="cap-period">
+                    <span>Resets</span>
+                    <select id="cap-period" aria-label="When the spending limit resets" disabled>
+                      <option value="day">Every day (midnight)</option>
+                      <option value="session">When Chrome restarts</option>
+                    </select>
+                  </label>
+                </div>
+                <p class="meta" id="cap-spent">Spent so far · <strong>—</strong></p>
+              </div>
+            </details>
 
             <div class="subtabs" role="tablist" aria-label="Shops" data-index="0">
               <span class="tab-thumb" aria-hidden="true"></span>
@@ -235,6 +303,11 @@
               </div>
               <p class="empty-state" id="glitch-message" role="status">Loading…</p>
               <div class="catalog-list" id="glitch-list" aria-live="polite"></div>
+              <div class="plan-card" id="glitch-plan" aria-live="polite" hidden>
+                <div class="plan-row"><span>Ticked wares together</span><strong id="glitch-plan-total">0 EP</strong></div>
+                <div class="plan-row"><span>You have</span><strong id="glitch-plan-wallet">—</strong></div>
+                <p class="plan-verdict" id="glitch-plan-verdict"></p>
+              </div>
               <div class="glitch-actions">
                 <button class="btn btn-primary" id="glitch-start" type="button" disabled>Take the trial</button>
                 <p class="fine-print" id="glitch-start-hint" role="status"></p>
@@ -281,8 +354,26 @@
                 <button class="chip chip-button" type="button" data-example="∅">∅</button>
                 <button class="chip chip-button" type="button" data-example="NaN">NaN</button>
               </div>
+              <div class="examples recent" id="number-checker-recent" hidden>
+                <span class="examples-label">Recent</span>
+                <span class="recent-chips" id="number-checker-recent-chips"></span>
+                <button class="link-button" id="number-checker-recent-clear" type="button">Clear</button>
+              </div>
               <p class="visually-hidden" id="number-checker-help">Enter up to 250 characters. Checking only previews the result and does not roll or earn EP.</p>
               <p class="fine-print">Preview only · no roll, no EP earned · needs an open RNGidle tab</p>
+            </section>
+
+            <section class="card compare-card" id="number-checker-compare" aria-labelledby="compare-heading" hidden>
+              <div class="section-head">
+                <div>
+                  <h2 id="compare-heading">Compare</h2>
+                  <p id="compare-sub">Pinned number against your latest check.</p>
+                </div>
+                <button class="btn btn-ghost btn-small" id="compare-clear" type="button">Unpin</button>
+              </div>
+              <div class="compare-cols" id="compare-cols"></div>
+              <p class="compare-verdict" id="compare-verdict" role="status"></p>
+              <div class="compare-badges" id="compare-badges"></div>
             </section>
 
             <section class="checker-result" id="number-checker-result" role="status" aria-live="polite" aria-atomic="true">
@@ -290,6 +381,115 @@
                 <span class="placeholder-mark" aria-hidden="true">#</span>
                 <p>Enter a value, or tap an example, to preview its score and badges.</p>
               </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- ============ History ============ -->
+        <section class="tab-panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+          <div class="stack">
+            <section class="card history-card" aria-labelledby="history-heading">
+              <div class="section-head">
+                <div>
+                  <h2 id="history-heading">Purchase history</h2>
+                  <p>What the extension bought, or tried to buy.</p>
+                </div>
+                <span class="count-badge" id="history-count">0 entries</span>
+              </div>
+              <div class="history-totals" role="group" aria-label="Totals">
+                <div class="total-tile"><span>Spent today</span><strong id="history-today">0 EP</strong></div>
+                <div class="total-tile"><span>Bought today</span><strong id="history-today-count">0</strong></div>
+                <div class="total-tile"><span>Spent in list</span><strong id="history-total">0 EP</strong></div>
+              </div>
+              <div class="filter-chips" id="history-filters" role="group" aria-label="Show purchases from">
+                <button class="chip chip-button" type="button" data-filter="all" aria-pressed="true">All</button>
+                <button class="chip chip-button" type="button" data-filter="shop" aria-pressed="false">Glim’s shop</button>
+                <button class="chip chip-button" type="button" data-filter="black" aria-pressed="false">Black Market</button>
+                <button class="chip chip-button" type="button" data-filter="glitch" aria-pressed="false">Glitch</button>
+              </div>
+            </section>
+            <p class="empty-state" id="history-empty" role="status">No purchases yet.</p>
+            <ul class="history-list" id="history-list"></ul>
+            <div class="history-footer" id="history-footer" hidden>
+              <button class="btn btn-ghost" id="history-clear" type="button">Clear history</button>
+              <div class="confirm-inline" id="history-confirm" role="alertdialog" aria-label="Confirm clearing history" hidden>
+                <span>Clear the whole purchase history? Your auto-buy settings and progress are not touched.</span>
+                <div class="confirm-actions">
+                  <button class="btn btn-danger" id="history-confirm-yes" type="button">Yes, clear it</button>
+                  <button class="btn btn-ghost" id="history-confirm-no" type="button">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Settings ============ -->
+        <section class="tab-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+          <div class="stack">
+            <section class="card" aria-labelledby="look-heading">
+              <h2 id="look-heading">Appearance</h2>
+              <div class="segmented" id="theme-choice" role="radiogroup" aria-label="Theme">
+                <label><input type="radio" name="theme" value="auto"><span>Auto</span></label>
+                <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+                <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+              </div>
+              <p class="fine-print">Auto follows your system’s light or dark setting.</p>
+              <label class="filter-option" for="compact-toggle">
+                <input id="compact-toggle" type="checkbox">
+                <span><strong>Compact layout</strong><small>Tighter spacing so more fits on screen.</small></span>
+              </label>
+            </section>
+
+            <section class="card" aria-labelledby="alerts-heading">
+              <h2 id="alerts-heading">Alerts</h2>
+              <p>Everything here is off until you turn it on.</p>
+              <h3 class="group-title">Tell me by</h3>
+              <label class="filter-option" for="chan-desktop">
+                <input id="chan-desktop" type="checkbox">
+                <span><strong>Desktop notification</strong><small>Shows even when Chrome is in the background.</small></span>
+              </label>
+              <label class="filter-option" for="chan-sound">
+                <input id="chan-sound" type="checkbox">
+                <span><strong>Sound</strong><small>Short chimes in the game tab, and cues for trial answers in this menu.</small></span>
+              </label>
+              <label class="filter-option" for="chan-flash">
+                <input id="chan-flash" type="checkbox">
+                <span><strong>Flash the tab title</strong><small>Only while the game tab is in the background.</small></span>
+              </label>
+              <label class="field-label volume-field" for="sound-volume">
+                <span>Volume</span>
+                <input id="sound-volume" type="range" min="0" max="100" step="5" value="50">
+              </label>
+              <div class="inline-actions">
+                <button class="btn btn-ghost" id="test-sound" type="button">Test sound</button>
+                <button class="btn btn-ghost" id="test-notify" type="button">Test notification</button>
+              </div>
+              <h3 class="group-title">Tell me about</h3>
+              <label class="filter-option" for="event-glitch">
+                <input id="event-glitch" type="checkbox">
+                <span><strong>Glitch visits</strong><small>Needs “Alert me when Glitch visits” on the Glitch tab.</small></span>
+              </label>
+              <label class="filter-option" for="event-purchase">
+                <input id="event-purchase" type="checkbox">
+                <span><strong>Auto-buy results</strong><small>Bought, declined, unknown result, and dry-run matches.</small></span>
+              </label>
+              <label class="filter-option" for="event-black">
+                <input id="event-black" type="checkbox">
+                <span><strong>Black Market matches</strong><small>Checks about once a minute while a game tab is open, using your Black Market filters. Skipped while auto-buy is buying from the Black Market itself.</small></span>
+              </label>
+              <p class="fine-print" id="alerts-note" role="status"></p>
+            </section>
+
+            <section class="card" aria-labelledby="backup-heading">
+              <h2 id="backup-heading">Back up or move settings</h2>
+              <p>Copy your settings as text, or paste some to load them. Auto-buy stays off after an import until you switch it on.</p>
+              <label class="visually-hidden" for="backup-text">Settings text</label>
+              <textarea id="backup-text" class="backup-text" rows="5" spellcheck="false" placeholder="Paste settings here, then choose Import"></textarea>
+              <div class="inline-actions">
+                <button class="btn btn-ghost" id="backup-export" type="button">Copy my settings</button>
+                <button class="btn btn-primary" id="backup-import" type="button">Import</button>
+              </div>
+              <p class="fine-print" id="backup-status" role="status" aria-live="polite"></p>
             </section>
           </div>
         </section>

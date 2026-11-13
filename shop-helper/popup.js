@@ -2,8 +2,8 @@ const state = {
   catalog: [],
   blackCatalog: [],
   snapshot: {},
-  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket() },
-  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket() },
+  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), safety: defaultSafety() },
+  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), safety: defaultSafety() },
   ready: false,
   catalogLoaded: false,
   blackCatalogLoaded: false,
@@ -58,6 +58,21 @@ const elements = {
   numberCheckerInput: document.getElementById("number-checker-input"),
   numberCheckerButton: document.getElementById("number-checker-button"),
   numberCheckerResult: document.getElementById("number-checker-result"),
+  dryRun: document.getElementById("dry-run"),
+  dryRunNotice: document.getElementById("dry-run-notice"),
+  capEnabled: document.getElementById("cap-enabled"),
+  capAmount: document.getElementById("cap-amount"),
+  capPeriod: document.getElementById("cap-period"),
+  capSpent: document.getElementById("cap-spent"),
+  safetySummary: document.getElementById("safety-summary"),
+  recent: document.getElementById("number-checker-recent"),
+  recentChips: document.getElementById("number-checker-recent-chips"),
+  recentClear: document.getElementById("number-checker-recent-clear"),
+  compare: document.getElementById("number-checker-compare"),
+  compareCols: document.getElementById("compare-cols"),
+  compareVerdict: document.getElementById("compare-verdict"),
+  compareBadges: document.getElementById("compare-badges"),
+  compareClear: document.getElementById("compare-clear"),
 };
 
 function defaultBlackMarket() {
@@ -68,6 +83,22 @@ function defaultBlackMarket() {
     itemIds: [],
     minimumEnabled: false,
     minimumPrice: 0,
+  };
+}
+
+function defaultSafety() {
+  return { dryRun: false, cap: { enabled: false, amount: 0, period: "day" } };
+}
+
+function normalizeSafety(value) {
+  const amount = Number(value?.cap?.amount);
+  return {
+    dryRun: value?.dryRun === true,
+    cap: {
+      enabled: value?.cap?.enabled === true,
+      amount: Number.isFinite(amount) && amount >= 0 ? amount : 0,
+      period: value?.cap?.period === "session" ? "session" : "day",
+    },
   };
 }
 
@@ -117,6 +148,7 @@ function normalizeSettings(value) {
     enabled: value?.enabled === true,
     rules,
     blackMarket: normalizeBlackMarket(value?.blackMarket),
+    safety: normalizeSafety(value?.safety),
   };
 }
 
@@ -137,6 +169,7 @@ function cloneSettings(settings) {
       ...settings.blackMarket,
       itemIds: [...settings.blackMarket.itemIds],
     },
+    safety: { dryRun: settings.safety.dryRun, cap: { ...settings.safety.cap } },
   };
 }
 
@@ -154,6 +187,10 @@ function updateSaveState() {
     elements.blackMarketMinimumEnabled,
     elements.blackMarketMinimumPrice,
     elements.blackMarketSearch,
+    elements.dryRun,
+    elements.capEnabled,
+    elements.capAmount,
+    elements.capPeriod,
   ]) {
     control.disabled = !state.ready || state.saving;
   }
@@ -606,6 +643,7 @@ function displayNumberResult(result) {
   if (compact) addText(scoreBlock, "span", "checker-score-compact", `≈ ${compact} EP`);
   summary.append(scoreBlock);
   container.append(summary);
+  addPinButton(container, result);
 
   const badges = Array.isArray(result.badges) ? result.badges : [];
   const scoringCount = badges.filter((badge) => badge?.isScoring !== false).length;
@@ -668,6 +706,7 @@ async function checkNumber(event) {
       displayCheckerMessage("checker-error", "The number checker returned an incomplete result. Try again.");
     } else {
       displayNumberResult(response.result);
+      rememberCheck(response.result);
       // On short screens the score can land below the fold; bring it into view.
       elements.numberCheckerResult.querySelector(".checker-summary")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
@@ -681,7 +720,261 @@ async function checkNumber(event) {
   }
 }
 
+// ---------- safety: dry run and spending limit ----------
+
+function safetySummaryText(safety) {
+  const parts = [];
+  if (safety.cap.enabled && safety.cap.amount > 0) {
+    parts.push(`Limit ${compactEPValue(safety.cap.amount) || formatEPValue(safety.cap.amount)} / ${safety.cap.period === "day" ? "day" : "session"}`);
+  }
+  if (safety.dryRun) parts.push("Dry run");
+  return parts.join(" · ") || "Off";
+}
+
+function localDayKey(time = Date.now()) {
+  const date = new Date(time);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// How much auto-buy has spent in the current limit period, from the background worker's record.
+async function spentInPeriod(period) {
+  const spend = state.snapshot.spend;
+  if (!spend || typeof spend !== "object") return 0;
+  if (period === "day") return spend.day === localDayKey() ? Number(spend.dayTotal) || 0 : 0;
+  let sessionId = state.snapshot.sessionId;
+  try {
+    const stored = await chrome.storage.session.get("sessionId");
+    if (stored?.sessionId) sessionId = stored.sessionId;
+  } catch {
+    // Older Chrome builds or blocked contexts fall back to the copy kept in local storage.
+  }
+  return spend.session && spend.session === sessionId ? Number(spend.sessionTotal) || 0 : 0;
+}
+
+async function renderSpent() {
+  const cap = state.saved.safety.cap;
+  const strong = document.createElement("strong");
+  if (!cap.enabled || !(cap.amount > 0)) {
+    elements.capSpent.replaceChildren("Spent so far · ", Object.assign(strong, { textContent: "no limit set" }));
+    return;
+  }
+  const spent = await spentInPeriod(cap.period);
+  const label = cap.period === "day" ? "Spent today" : "Spent this session";
+  strong.textContent = `${compactEPValue(spent) || "0"} of ${compactEPValue(cap.amount) || formatEPValue(cap.amount)} EP`;
+  elements.capSpent.replaceChildren(`${label} · `, strong);
+}
+
+function renderSafety() {
+  const { safety } = state.draft;
+  elements.dryRun.checked = safety.dryRun;
+  elements.capEnabled.checked = safety.cap.enabled;
+  if (document.activeElement !== elements.capAmount) elements.capAmount.value = safety.cap.amount > 0 ? String(safety.cap.amount) : "";
+  elements.capPeriod.value = safety.cap.period;
+  elements.capAmount.placeholder = "e.g. 5000000";
+  elements.safetySummary.textContent = safetySummaryText(safety);
+  elements.dryRunNotice.hidden = !state.saved.safety.dryRun;
+  void renderSpent();
+}
+
+function bindSafety() {
+  elements.dryRun.addEventListener("change", () => {
+    state.draft.safety.dryRun = elements.dryRun.checked;
+    renderSafety();
+    markDirty();
+  });
+  elements.capEnabled.addEventListener("change", () => {
+    state.draft.safety.cap.enabled = elements.capEnabled.checked;
+    renderSafety();
+    markDirty();
+  });
+  elements.capAmount.addEventListener("input", () => {
+    const amount = Number(elements.capAmount.value);
+    state.draft.safety.cap.amount = elements.capAmount.value !== "" && Number.isFinite(amount) && amount >= 0 ? amount : 0;
+    elements.safetySummary.textContent = safetySummaryText(state.draft.safety);
+    markDirty();
+  });
+  elements.capPeriod.addEventListener("change", () => {
+    state.draft.safety.cap.period = elements.capPeriod.value === "session" ? "session" : "day";
+    renderSafety();
+    markDirty();
+  });
+}
+
+// Settings pasted in from a backup load as unsaved changes. Auto-buy stays off and the rules get
+// fresh ids, so nothing here can spend EP or reuse another install's progress until you save.
+function importSettings(raw) {
+  const imported = normalizeSettings(raw);
+  const used = new Set();
+  imported.rules = imported.rules.map((rule) => {
+    const uid = newUid(used);
+    used.add(uid);
+    return { ...rule, uid };
+  });
+  imported.enabled = false;
+  state.draft = cloneSettings(imported);
+  elements.enabled.checked = false;
+  renderCatalog();
+  renderBlackMarket();
+  renderSafety();
+  markDirty("Imported settings are not saved yet.");
+}
+
+// ---------- number checker: recent checks and compare ----------
+
+const RECENT_LIMIT = 8;
+const checker = { recent: [], pinned: null, latest: null };
+
+function summarizeResult(result) {
+  return {
+    number: String(result.number ?? ""),
+    totalScore: Number(result.totalScore),
+    badges: (Array.isArray(result.badges) ? result.badges : []).slice(0, 60).map((badge) => ({
+      id: String(badge?.id ?? badge?.label ?? ""),
+      label: String(badge?.label ?? badge?.id ?? ""),
+      emoji: String(badge?.emoji ?? ""),
+      isScoring: badge?.isScoring !== false,
+    })),
+  };
+}
+
+function badgeName(badge) {
+  return [badge.emoji, badge.label].filter(Boolean).join(" ") || badge.id;
+}
+
+// Splits two results' scoring badges into shared and one-sided ones.
+function diffBadges(a, b) {
+  const scoring = (summary) => new Map(summary.badges.filter((badge) => badge.isScoring).map((badge) => [badge.id, badge]));
+  const left = scoring(a), right = scoring(b);
+  return {
+    both: [...left.keys()].filter((id) => right.has(id)).map((id) => left.get(id)),
+    onlyA: [...left.keys()].filter((id) => !right.has(id)).map((id) => left.get(id)),
+    onlyB: [...right.keys()].filter((id) => !left.has(id)).map((id) => right.get(id)),
+  };
+}
+
+function persistChecker() {
+  chrome.storage.local.set({ checkerRecent: checker.recent, checkerPinned: checker.pinned }).catch(() => {});
+}
+
+function renderRecent() {
+  elements.recentChips.replaceChildren();
+  elements.recent.hidden = checker.recent.length === 0;
+  for (const entry of checker.recent) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip chip-button";
+    chip.dataset.example = entry.number;
+    chip.textContent = entry.number.length > 14 ? `${entry.number.slice(0, 13)}…` : entry.number;
+    chip.title = `${entry.number} · ${compactEPValue(entry.totalScore) || formatEPValue(entry.totalScore)} EP`;
+    elements.recentChips.append(chip);
+  }
+}
+
+function addCompareColumn(summary, label) {
+  const column = document.createElement("div");
+  column.className = "compare-col";
+  addText(column, "span", "compare-label", label);
+  addText(column, "strong", "compare-number", summary.number.length > 18 ? `${summary.number.slice(0, 17)}…` : summary.number);
+  addText(column, "span", "compare-score", `${formatEPValue(summary.totalScore)} EP`);
+  elements.compareCols.append(column);
+}
+
+function renderCompare() {
+  const { pinned, latest } = checker;
+  const show = !!pinned && !!latest && pinned.number !== latest.number;
+  elements.compare.hidden = !pinned;
+  elements.compareCols.replaceChildren();
+  elements.compareBadges.replaceChildren();
+  if (!pinned) return;
+  addCompareColumn(pinned, "Pinned");
+  if (!show) {
+    elements.compareVerdict.textContent = "Check another number to compare it with the pinned one.";
+    return;
+  }
+  addCompareColumn(latest, "Latest");
+  const delta = latest.totalScore - pinned.totalScore;
+  const ratio = pinned.totalScore > 0 && latest.totalScore > 0 ? latest.totalScore / pinned.totalScore : null;
+  elements.compareVerdict.textContent = delta === 0 ? "Both score the same."
+    : `${latest.number.length > 18 ? "The latest" : latest.number} scores ${compactEPValue(Math.abs(delta)) || formatEPValue(Math.abs(delta))} EP ${delta > 0 ? "more" : "less"}${ratio ? ` (×${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(2)})` : ""}.`;
+  const diff = diffBadges(pinned, latest);
+  for (const [heading, badges] of [["Only pinned", diff.onlyA], ["Only latest", diff.onlyB], ["Both", diff.both]]) {
+    if (!badges.length) continue;
+    const group = document.createElement("div");
+    group.className = "compare-group";
+    addText(group, "span", "compare-label", heading);
+    for (const badge of badges) addText(group, "span", "chip", badgeName(badge));
+    elements.compareBadges.append(group);
+  }
+}
+
+function rememberCheck(result) {
+  const summary = summarizeResult(result);
+  checker.latest = summary;
+  checker.recent = [summary, ...checker.recent.filter((entry) => entry.number !== summary.number)].slice(0, RECENT_LIMIT);
+  persistChecker();
+  renderRecent();
+  renderCompare();
+}
+
+function addPinButton(container, result) {
+  const row = document.createElement("div");
+  row.className = "checker-actions";
+  const pinned = checker.pinned?.number === String(result.number ?? "");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn-ghost btn-small";
+  button.textContent = pinned ? "Pinned for comparison" : "Pin to compare";
+  button.disabled = pinned;
+  button.addEventListener("click", () => {
+    checker.pinned = summarizeResult(result);
+    persistChecker();
+    button.textContent = "Pinned for comparison";
+    button.disabled = true;
+    renderCompare();
+  });
+  row.append(button);
+  container.append(row);
+}
+
+async function loadCheckerExtras() {
+  try {
+    const stored = await chrome.storage.local.get(["checkerRecent", "checkerPinned"]);
+    const valid = (entry) => entry && typeof entry.number === "string" && Number.isFinite(Number(entry.totalScore)) && Array.isArray(entry.badges);
+    checker.recent = Array.isArray(stored.checkerRecent) ? stored.checkerRecent.filter(valid).slice(0, RECENT_LIMIT) : [];
+    checker.pinned = valid(stored.checkerPinned) ? stored.checkerPinned : null;
+  } catch {
+    checker.recent = [];
+    checker.pinned = null;
+  }
+  renderRecent();
+  renderCompare();
+}
+
+function bindCheckerExtras() {
+  elements.recentChips.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-example]");
+    if (!chip) return;
+    elements.numberCheckerInput.value = chip.dataset.example;
+    elements.numberCheckerForm.requestSubmit();
+  });
+  elements.recentClear.addEventListener("click", () => {
+    checker.recent = [];
+    persistChecker();
+    renderRecent();
+  });
+  elements.compareClear.addEventListener("click", () => {
+    checker.pinned = null;
+    persistChecker();
+    renderCompare();
+    const pin = elements.numberCheckerResult.querySelector(".checker-actions button");
+    if (pin) { pin.disabled = false; pin.textContent = "Pin to compare"; }
+  });
+}
+
 function bindEvents() {
+  bindSafety();
+  bindCheckerExtras();
+  document.addEventListener("shophelper:import-settings", (event) => importSettings(event.detail));
   elements.numberCheckerForm.addEventListener("submit", checkNumber);
 
   elements.enabled.addEventListener("change", () => {
@@ -877,6 +1170,10 @@ function validateSettings() {
     (typeof minimumPrice !== "number" || !Number.isFinite(minimumPrice) || minimumPrice < 0)) {
     return "Enter a valid minimum item price of 0 EP or more.";
   }
+  const cap = state.draft.safety.cap;
+  if (cap.enabled && !(Number.isFinite(cap.amount) && cap.amount > 0)) {
+    return "Enter a spending limit above 0 EP, or turn the limit off.";
+  }
   return "";
 }
 
@@ -905,6 +1202,14 @@ async function saveSettings() {
         ? state.draft.blackMarket.minimumPrice
         : 0,
     },
+    safety: {
+      dryRun: state.draft.safety.dryRun,
+      cap: {
+        enabled: state.draft.safety.cap.enabled,
+        amount: Number.isFinite(state.draft.safety.cap.amount) && state.draft.safety.cap.amount >= 0 ? state.draft.safety.cap.amount : 0,
+        period: state.draft.safety.cap.period,
+      },
+    },
   };
   state.saving = true;
   elements.saveMessage.textContent = "Saving…";
@@ -926,6 +1231,7 @@ async function saveSettings() {
     updateSaveState();
     renderCatalog();
     renderBlackMarket();
+    renderSafety();
 
     try {
       const response = chrome.runtime.sendMessage({ type: "SETTINGS_CHANGED" });
@@ -955,9 +1261,12 @@ function handleStorageChanges(changes, areaName) {
     elements.enabled.checked = state.draft.enabled;
     renderCatalog();
     renderBlackMarket();
+    renderSafety();
   } else if (settingsUpdated) {
     elements.saveMessage.textContent = "Settings changed elsewhere; your unsaved edits are still here.";
   }
+
+  if ("spend" in changes || "sessionId" in changes) void renderSpent();
 
   renderStatus();
   if ("progress" in changes) {
@@ -1003,8 +1312,10 @@ async function initialize() {
   renderStatus();
   renderCatalog();
   renderBlackMarket();
+  renderSafety();
   renderActivity();
   updateSaveState();
+  void loadCheckerExtras();
 }
 
 initialize();

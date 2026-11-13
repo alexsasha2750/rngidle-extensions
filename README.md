@@ -1,6 +1,6 @@
 # RNGidle Shop Helper
 
-An experimental Chrome extension for [RNGidle](https://rngidle.fun/) with three tools in one menu:
+An experimental Chrome extension for [RNGidle](https://rngidle.fun/) with three tools in one menu, plus purchase history and settings:
 
 - **Auto-buy** automatically buys selected items and bundles from Glim's shop, and items from the Black Market, while an RNGidle tab is open.
 - **Glitch** shows Glitch's shelf, lets you pick what to try for, presents his timed trial questions for you to answer, and buys the ware once the game confirms you passed. It also can alert you when he visits.
@@ -21,11 +21,13 @@ The current version is shown at the top of the menu.
 
 ## The menu
 
-The menu has three tabs. Your last tab, and whether the in-game menu is open, are remembered.
+The menu has five tabs. Your last tab, and whether the in-game menu is open, are remembered.
 
-- **Auto-buy** has a main **Automatic purchases** switch with connection status, then two sections: **Glim's shop** and **Black Market**. Changes apply when you choose **Save settings**.
+- **Auto-buy** has a main **Automatic purchases** switch with connection status, a live **Shops right now** card, a collapsed **Safety** section (dry run and spending limit), then two sections: **Glim's shop** and **Black Market**. Changes apply when you choose **Save settings**.
 - **Glitch** shows his shelf and visit timer, with an optional alert and a trial you answer yourself (see below).
-- **Number checker** previews a number; tap an example to try it.
+- **Checker** previews a number; tap an example or a recent check to try it, and pin one to compare against the next.
+- **History** lists what the extension bought, or tried to buy, with totals.
+- **Settings** has the theme, compact layout, alerts and sounds, and settings backup.
 
 ### In-game menu
 
@@ -47,6 +49,13 @@ The extension starts paused. It checks about once a minute while Chrome is runni
 
 Settings, status, and purchase activity are stored locally in the browser. The extension uses the game's existing signed-in session from its open tab and requests access only to `rngidle.fun`. It does not ask for or store credentials.
 
+### Shops right now, and safety
+
+- **Shops right now** shows whether Glim's shop and the Black Market are open and a countdown to the end of the current slot, plus the live Black Market offers with how each price compares with your EP ("7% of your EP" or "Need 233B more"). EP is not earned at a steady rate, so it does not guess how long saving up would take.
+- **Dry run** makes auto-buy log what it *would* buy ("Dry run: would buy 3 × Luck Potion III") without sending any purchase, spending EP or marking anything as bought. Turn it off and the next check buys for real.
+- **Spending limit** caps what auto-buy spends per day (resets at your local midnight) or per browser session (resets when Chrome restarts). Auto-buy skips anything that would go over, and says so. Glitch purchases, which you make yourself, don't count towards it.
+- Both are saved with **Save settings** like the rest of your auto-buy settings.
+
 ## Glitch
 
 Glitch quizzes you before every purchase, and the game's server checks the answers against a time limit. The extension does **not** answer for you: it shows each question, you pick or type the answer, and it sends that to the game. Only when the game reports that you passed does the extension send the purchase.
@@ -57,12 +66,29 @@ Glitch quizzes you before every purchase, and the game's server checks the answe
 - **Alert me when Glitch visits** (off by default) puts a badge on the toolbar icon and a pulsing ring and prompt on the in-game button when a ware you ticked (or any buyable ware, if none are ticked) is on his shelf. It checks about every 30 seconds while Chrome is running and an RNGidle tab is open.
 - If a purchase reply is lost, the extension retries with the same request ID so you are not charged twice. If the outcome stays unknown, it stops the queue and tells you to check your inventory.
 - The extension refuses to start a trial when you are signed out, when a different account than the one set up for auto-buy is signed in, or when the game's own button would be disabled (away, sold out, bought, or too expensive).
+- Each ware has an optional **Limit & note**: a highest price you are willing to pay (a ware above it is left out of the queue and of alerts) and a short reminder to yourself.
+- Under the wares, the **queue plan** adds up the ticked wares and says whether your EP covers them all together or by how much you fall short.
 
 ## Number checker
 
 With an RNGidle tab open, enter a number and choose **Check** to preview its badges and EP. For example, try `123`, `-12.5`, `3+4i`, `1+2i+3j+4k`, `∅`, or `NaN` (up to 250 characters). This uses the game's own live scoring engine in the game tab; it does not perform a roll or award EP. Results reflect that engine and can change if the game updates.
 
 The checker uses the game's JavaScript in the page rather than redistributing it, so it requires the site to be loaded and is intended for unpacked installation, not Chrome Web Store publication under Manifest V3's remotely hosted code policy.
+
+Your last eight checks appear as **Recent** chips (tap one to check it again). **Pin to compare** keeps a result; the next number you check is shown beside it with the difference in EP and which badges each has.
+
+## History
+
+Every purchase the extension makes or attempts is listed newest first, up to the last 200: bought, declined, result unknown, or dry run, from Glim's shop, the Black Market or Glitch, with the price and a filter by shop. The totals count only real purchases. **Clear history** removes the list only; your settings and auto-buy progress are untouched.
+
+## Settings
+
+- **Appearance:** Auto (follows your system), Light, or Dark, and a compact layout. The in-game button and prompt follow the theme too.
+- **Alerts** are all off until you turn them on. Choose how to be told (desktop notification, a short chime in the game tab, or flashing the game tab's title while it is in the background) and about what (Glitch visits, auto-buy results, Black Market matches). Sounds are synthesized in the browser; nothing is downloaded. The menu also plays small cues for your trial answers when sound is on.
+- **Black Market matches** checks about once a minute while a game tab is open, using your Black Market filters, and tells you once per visit. It is skipped while auto-buy is itself buying from the Black Market.
+- **Back up or move settings** copies your auto-buy settings, Glitch wares and menu preferences as text, and loads such text back in. An import never turns auto-buy on, gives the rules fresh IDs, and loads auto-buy settings as unsaved changes you review and save yourself. Progress, history and your account are never exported.
+
+Desktop notifications need the `notifications` permission, which this version adds. Chrome may ask you to approve it when you update.
 
 ## Checks
 

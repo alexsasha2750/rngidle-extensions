@@ -12,7 +12,8 @@
   const frameUrl = chrome.runtime.getURL("popup.html?embedded=1");
   const frameOrigin = new URL(frameUrl).origin;
 
-  const state = { launcher: true, open: false, enabled: false, run: "", alert: null, seen: "" };
+  const state = { launcher: true, open: false, enabled: false, run: "", alert: null, seen: "", theme: "auto" };
+  const lightQuery = window.matchMedia("(prefers-color-scheme: light)");
   let frame = null;
   let disposed = false;
 
@@ -98,6 +99,15 @@
       }
       iframe { display: block; width: 100%; height: 100%; border: 0; background: #090a16; color-scheme: dark; }
 
+      .scene[data-theme="light"] .bubble, .scene[data-theme="light"] .tip { color: #1b1e3a; background: #fff; border-color: rgba(120, 70, 210, 0.4); box-shadow: 0 14px 36px rgba(40, 40, 90, 0.22); }
+      .scene[data-theme="light"] .bubble strong { color: #a21caf; }
+      .scene[data-theme="light"] .bubble p { color: #4a5170; }
+      .scene[data-theme="light"] .bubble button { color: #1b1e3a; background: rgba(27, 30, 58, 0.06); border-color: rgba(27, 30, 58, 0.2); }
+      .scene[data-theme="light"] .bubble button.go { color: #fff; background: linear-gradient(135deg, #d946ef, #8b6cff); border-color: transparent; }
+      .scene[data-theme="light"] .panel, .scene[data-theme="light"] iframe { background: #f3f4fb; color-scheme: light; }
+      .scene[data-theme="light"] .panel { border-color: rgba(27, 30, 58, 0.16); box-shadow: 0 30px 80px rgba(40, 40, 90, 0.3), 0 0 0 1px rgba(139, 108, 255, 0.2); }
+      .scene[data-theme="light"] .dot { border-color: #fff; }
+
       @media (max-width: 480px) {
         .launcher { right: 14px; bottom: 14px; }
         .panel { right: 12px; left: 12px; width: auto; max-width: none; bottom: 78px; }
@@ -146,6 +156,43 @@
     host.addEventListener(type, (event) => event.stopPropagation());
   }
 
+  const themeOf = (prefs) => (prefs?.theme === "light" || prefs?.theme === "dark" ? prefs.theme : "auto");
+  const resolvedTheme = () => (state.theme === "auto" ? (lightQuery.matches ? "light" : "dark") : state.theme);
+  lightQuery.addEventListener("change", () => render());
+
+  // Sounds and the tab-title flash are asked for by the background worker (alerts, auto-buy results).
+  let flashTimer = null;
+  let flashTitleBefore = "";
+  function stopFlash() {
+    if (!flashTimer) return;
+    clearInterval(flashTimer);
+    flashTimer = null;
+    document.title = flashTitleBefore;
+  }
+  function flashTitle(text) {
+    if (!document.hidden) return;
+    stopFlash();
+    flashTitleBefore = document.title;
+    const started = Date.now();
+    let on = false;
+    flashTimer = setInterval(() => {
+      if (Date.now() - started > 60000) { stopFlash(); return; }
+      on = !on;
+      document.title = on ? `🔔 ${text}` : flashTitleBefore;
+    }, 1000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) stopFlash(); });
+
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (sender.id !== chrome.runtime.id || !message) return;
+    if (message.type === "HELPER_SOUND" && typeof message.name === "string") {
+      globalThis.shopHelperSound?.play(message.name, message.volume);
+      host.dataset.lastSound = message.name;
+    } else if (message.type === "HELPER_FLASH" && typeof message.text === "string") {
+      flashTitle(message.text.slice(0, 80));
+    }
+  });
+
   function cleanAlert(value) {
     return value && typeof value.key === "string" && Array.isArray(value.ids) && value.ids.length ? value : null;
   }
@@ -174,6 +221,7 @@
     launcher.tabIndex = state.launcher ? 0 : -1;
     launcher.setAttribute("aria-expanded", String(open));
     launcher.setAttribute("aria-label", open ? "Hide RNGidle Shop Helper" : "Open RNGidle Shop Helper");
+    scene.dataset.theme = resolvedTheme();
     const alerting = state.launcher && !!state.alert;
     launcher.dataset.alert = String(alerting);
     tip.textContent = alerting
@@ -248,6 +296,7 @@
     }
     if (changes.uiOpen) state.open = changes.uiOpen.newValue === true;
     if (changes.glitchAlert) state.alert = cleanAlert(changes.glitchAlert.newValue);
+    if (changes.uiPrefs) state.theme = themeOf(changes.uiPrefs.newValue);
     if (changes.settings) state.enabled = changes.settings.newValue?.enabled === true;
     if (changes.runStatus) state.run = changes.runStatus.newValue?.state ?? "";
     render();
@@ -255,8 +304,9 @@
 
   document.documentElement.append(host);
 
-  chrome.storage.local.get(["uiLauncher", "uiOpen", "settings", "runStatus", "glitchAlert"]).then((saved) => {
+  chrome.storage.local.get(["uiLauncher", "uiOpen", "settings", "runStatus", "glitchAlert", "uiPrefs"]).then((saved) => {
     state.alert = cleanAlert(saved.glitchAlert);
+    state.theme = themeOf(saved.uiPrefs);
     state.launcher = saved.uiLauncher !== false;
     state.open = state.launcher && saved.uiOpen === true;
     state.enabled = saved.settings?.enabled === true;

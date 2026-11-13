@@ -1,7 +1,8 @@
 // The Glitch tab: his live shelf, alerts, and the trial you answer yourself.
 // A trial is a timed question the game checks on its server. This menu shows each question
 // to the player and sends back what they pick or type; it never answers for them.
-import { normalizePrefs, offerState, REASONS } from './glitch-logic.js';
+import { normalizePrefs, offerState, planCost, REASONS, withinLimit } from './glitch-logic.js';
+import { cue } from './popup-prefs.js';
 
 const storage = chrome.storage.local;
 const $ = id => document.getElementById(id);
@@ -16,6 +17,7 @@ const el = {
   alert: $('glitch-alert'), alertCopy: $('glitch-alert-copy'), alertCard: $('glitch-alert-card'), note: $('glitch-note'),
   shop: $('glitch-shop'), count: $('glitch-selected-count'), message: $('glitch-message'), list: $('glitch-list'),
   start: $('glitch-start'), hint: $('glitch-start-hint'),
+  plan: $('glitch-plan'), planTotal: $('glitch-plan-total'), planWallet: $('glitch-plan-wallet'), planVerdict: $('glitch-plan-verdict'),
   trial: $('glitch-trial'), trialWare: $('glitch-trial-ware'), steps: $('glitch-trial-steps'),
   body: $('glitch-trial-body'), actions: $('glitch-trial-actions'), results: $('glitch-trial-results'),
 };
@@ -29,6 +31,7 @@ const state = {
   prefs: normalizePrefs(null),
   prefsReady: false,
   run: null,
+  openOptions: new Set(),
 };
 let ui = {};
 
@@ -73,7 +76,9 @@ function wares() {
 const nameOf = id => wares().find(row => row.id === id) ?? { id, name: readable(id), emoji: '✦' };
 const buyable = row => !!row.offer && offerState(row.offer, state.shop).buyable;
 const wanted = () => new Set(state.prefs.itemIds);
-const queue = () => wares().filter(row => wanted().has(row.id) && buyable(row)).map(row => row.id);
+const queue = () => wares().filter(row => wanted().has(row.id) && buyable(row) && withinLimit(state.prefs, row.offer)).map(row => row.id);
+const aboveLimit = row => buyable(row) && !withinLimit(state.prefs, row.offer);
+const priceOf = id => state.shop?.items.find(item => item.id === id)?.price ?? null;
 
 function startBlocker() {
   if (state.run) return 'A trial is already running.';
@@ -82,7 +87,11 @@ function startBlocker() {
   if (!state.shop) return 'Waiting for Glitch’s shelf…';
   if (!state.shop.open) return 'Glitch is away.';
   if (!state.prefs.itemIds.length) return 'Tick at least one ware.';
-  if (!queue().length) return 'None of the ticked wares can be bought right now.';
+  if (!queue().length) {
+    return wares().some(row => wanted().has(row.id) && aboveLimit(row))
+      ? 'The ticked wares cost more than the limits you set.'
+      : 'None of the ticked wares can be bought right now.';
+  }
   return '';
 }
 
@@ -122,11 +131,46 @@ function pill(row) {
   if (!state.shop) return null;
   if (!row.offer) return ['off', 'Not on his shelf'];
   const status = offerState(row.offer, state.shop);
-  if (status.buyable) return ['ok', 'Available'];
+  if (status.buyable) return aboveLimit(row) ? ['off', 'Above your limit'] : ['ok', 'Available'];
   return [status.reason === 'bought' ? 'done' : 'off', status.reason === 'away' ? 'Away' : status.reason === 'sold' ? 'Sold out' : status.reason === 'poor' ? 'Not enough EP' : status.reason === 'bought' ? 'Bought' : 'Unavailable'];
 }
 
+function optionsFor(row) {
+  const details = make('details', 'ware-options');
+  details.dataset.id = row.id;
+  details.open = state.openOptions.has(row.id);
+  const limit = state.prefs.limits[row.id], note = state.prefs.notes[row.id];
+  const summary = make('summary');
+  summary.append(make('span', '', 'Limit & note'));
+  if (limit || note) summary.append(make('span', 'ware-options-set', [limit ? `≤ ${ep(limit)}` : '', note ? 'note' : ''].filter(Boolean).join(' · ')));
+  details.append(summary);
+
+  const body = make('div', 'ware-options-body');
+  const limitLabel = make('label', 'field-label');
+  limitLabel.append(make('span', '', 'Only buy at or under (EP)'));
+  const limitInput = make('input');
+  Object.assign(limitInput, { type: 'number', min: '0', step: 'any', placeholder: 'No limit', value: limit ? String(limit) : '' });
+  limitInput.inputMode = 'decimal';
+  limitInput.dataset.limit = row.id;
+  limitInput.setAttribute('aria-label', `Highest price for ${row.name}`);
+  limitLabel.append(limitInput);
+  const noteLabel = make('label', 'field-label');
+  noteLabel.append(make('span', '', 'Note to self'));
+  const noteInput = make('input');
+  Object.assign(noteInput, { type: 'text', maxLength: 80, placeholder: 'e.g. only if under 5B', value: note || '' });
+  noteInput.dataset.note = row.id;
+  noteInput.setAttribute('aria-label', `Note for ${row.name}`);
+  noteLabel.append(noteInput);
+  body.append(limitLabel, noteLabel);
+  details.append(body);
+  return details;
+}
+
+// Typing in a limit or note field must not be wiped by a refresh of the shelf.
+const typing = () => document.activeElement?.matches?.('#glitch-list input[data-limit], #glitch-list input[data-note]');
+
 function renderWares() {
+  if (typing()) return;
   const rows = wares();
   el.list.replaceChildren();
   el.message.hidden = rows.length > 0;
@@ -153,13 +197,30 @@ function renderWares() {
       line.append(tag);
       card.append(line);
     }
+    const note = state.prefs.notes[row.id];
+    if (note) card.append(make('p', 'ware-note', note));
+    if (state.prefsReady) card.append(optionsFor(row));
     el.list.append(card);
   }
   el.count.textContent = `${state.prefs.itemIds.length} ticked`;
   renderStart();
 }
 
+function renderPlan() {
+  const ticked = wares().filter(row => wanted().has(row.id) && row.offer);
+  const plan = planCost(ticked.map(row => row.offer), state.shop?.wallet?.effective ?? null);
+  el.plan.hidden = !state.shop?.open || plan.count === 0;
+  if (el.plan.hidden) return;
+  el.plan.dataset.tone = plan.covered ? 'good' : plan.wallet == null ? 'idle' : 'short';
+  el.planTotal.textContent = `${ep(plan.total)} EP`;
+  el.planWallet.textContent = plan.wallet == null ? '—' : `${ep(plan.wallet)} EP`;
+  el.planVerdict.textContent = plan.wallet == null ? 'Sign in to compare with your EP.'
+    : plan.covered ? `You can afford all ${plan.count} ${plan.count === 1 ? 'ware' : 'wares'}.`
+    : `Short by ${ep(plan.short)} EP for all ${plan.count} wares together.`;
+}
+
 function renderStart() {
+  renderPlan();
   const blocker = startBlocker();
   const n = queue().length;
   el.start.disabled = !!blocker;
@@ -301,6 +362,9 @@ function tick() {
     const left = Math.max(0, run.deadline - Date.now());
     ui.clock?.style.setProperty('--p', (left / run.question.ms).toFixed(3));
     if (ui.clock) ui.clock.dataset.low = String(left <= 3000);
+    // One tick per second over the last three seconds.
+    const second = Math.ceil(left / 1000);
+    if (left > 0 && second <= 3 && second !== run.lastTick) { run.lastTick = second; cue('tick'); }
     if (left <= 0) void submit('');
   }
   if (run?.phase === 'failed' && ui.again) {
@@ -316,7 +380,8 @@ function tick() {
 async function startRun() {
   const ids = queue();
   if (startBlocker() || !ids.length) return;
-  state.run = { queue: ids, index: 0, phase: 'loading', results: [], question: null, deadline: 0, restUntil: 0, message: '', reason: '' };
+  state.run = { queue: ids, index: 0, phase: 'loading', results: [], question: null, deadline: 0, restUntil: 0, message: '', reason: '', lastTick: -1 };
+  cue('start');
   renderAll();
   await beginTrial();
 }
@@ -352,6 +417,7 @@ function askQuestion(run, question) {
   run.question = question;
   run.phase = 'ask';
   run.deadline = Date.now() + question.ms;
+  run.lastTick = -1;
   renderTrial();
 }
 
@@ -360,16 +426,19 @@ async function submit(value) {
   if (!run || run.phase !== 'ask' || !run.question) return;
   run.phase = 'checking';
   renderTrial();
-  const reply = await send({ type: 'GLITCH_TRIAL_ANSWER', item: run.queue[run.index], id: run.question.id, answer: value });
+  const item = run.queue[run.index];
+  const reply = await send({ type: 'GLITCH_TRIAL_ANSWER', item, id: run.question.id, answer: value, price: priceOf(item) });
   if (state.run !== run) return;
   if (!reply.ok) return failTrial(run, reply.error || 'The answer could not be sent.', 0);
-  if (reply.kind === 'question') return askQuestion(run, reply.question);
+  if (reply.kind === 'question') { cue('correct'); return askQuestion(run, reply.question); }
   if (reply.kind === 'failed') {
+    cue('wrong');
     return failTrial(run, `${reply.late ? 'Too slow.' : 'Wrong.'}${reply.answer ? ` It was ${reply.answer}.` : ''}`, reply.rest);
   }
   const id = run.queue[run.index];
   const name = nameOf(id).name;
-  if (reply.kind === 'bought') return finishWare(run, { id, ok: true, text: 'bought' }, `Bought ${name}.`);
+  if (reply.kind === 'bought') { cue('success'); return finishWare(run, { id, ok: true, text: 'bought' }, `Bought ${name}.`); }
+  cue('fail');
   if (reply.kind === 'declined') return finishWare(run, { id, ok: false, text: `declined (${reply.error})` }, `${name}: Glitch declined the purchase. ${reply.error || ''}`.trim());
   // Unknown outcome: stop here so nothing is bought twice by accident.
   run.results.push({ id, ok: false, text: 'result unknown' });
@@ -427,12 +496,28 @@ async function init() {
   el.alert.addEventListener('change', () => { state.prefs.alert = el.alert.checked; savePrefs(); });
   el.list.addEventListener('change', event => {
     const box = event.target;
-    if (!(box instanceof HTMLInputElement) || !box.dataset.id) return;
+    if (!(box instanceof HTMLInputElement)) return;
+    if (box.dataset.limit || box.dataset.note) {
+      const id = box.dataset.limit || box.dataset.note;
+      const next = { ...state.prefs, limits: { ...state.prefs.limits }, notes: { ...state.prefs.notes } };
+      if (box.dataset.limit) { if (box.value.trim() === '') delete next.limits[id]; else next.limits[id] = box.value; }
+      else if (box.value.trim() === '') delete next.notes[id]; else next.notes[id] = box.value;
+      state.prefs = next;
+      box.blur();
+      savePrefs();
+      return;
+    }
+    if (!box.dataset.id) return;
     const ids = new Set(state.prefs.itemIds);
     if (box.checked) ids.add(box.dataset.id); else ids.delete(box.dataset.id);
     state.prefs.itemIds = [...ids];
     savePrefs();
   });
+  el.list.addEventListener('toggle', event => {
+    const details = event.target;
+    if (!(details instanceof HTMLDetailsElement) || !details.dataset.id) return;
+    if (details.open) state.openOptions.add(details.dataset.id); else state.openOptions.delete(details.dataset.id);
+  }, true);
   el.start.addEventListener('click', () => { void startRun(); });
 
   const [saved, names] = await Promise.allSettled([

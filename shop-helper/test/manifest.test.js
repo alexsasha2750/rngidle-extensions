@@ -39,7 +39,7 @@ test('popup.html has unique ids and every id the scripts look up', () => {
   const html = read('popup.html');
   const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
   assert.equal(new Set(ids).size, ids.length, 'duplicate ids in popup.html');
-  for (const file of ['popup.js', 'popup-ui.js', 'popup-glitch.js']) {
+  for (const file of ['popup.js', 'popup-ui.js', 'popup-glitch.js', 'popup-market.js', 'popup-history.js', 'popup-settings.js']) {
     for (const [, id] of read(file).matchAll(/(?:getElementById|\$)\(["']([^"']+)["']\)/g)) {
       assert.ok(ids.includes(id), `${file} looks up #${id}, which popup.html does not define`);
     }
@@ -55,9 +55,24 @@ test('popup.html loads only packaged scripts and styles', () => {
 });
 
 test('the menu never uses blocking dialogs or HTML injection', () => {
-  for (const file of ['popup.js', 'popup-ui.js', 'popup-glitch.js', 'glitch.js', 'overlay.js']) {
+  for (const file of ['popup.js', 'popup-ui.js', 'popup-glitch.js', 'popup-market.js', 'popup-history.js', 'popup-settings.js', 'glitch.js', 'overlay.js']) {
     const source = read(file).replace(/\/\/.*$/gm, '');
     assert.ok(!/\b(?:alert|confirm|prompt)\(/.test(source), `${file} uses a blocking dialog`);
     assert.ok(!/\.(?:innerHTML|outerHTML)\s*=/.test(source.replace(/root\.innerHTML = `[\s\S]*?`;/, '')), `${file} assigns HTML`);
+  }
+});
+
+test('sound and notifications are wired without widening access', () => {
+  assert.deepEqual(manifest.content_scripts[0].js, ['sound.js', 'content.js', 'overlay.js'], 'sound.js must load before the overlay uses it');
+  assert.ok(manifest.permissions.includes('notifications'));
+  assert.deepEqual(manifest.host_permissions, ['https://rngidle.fun/*']);
+  assert.ok(read('popup.html').includes('src="sound.js"'), 'the menu plays its own cues');
+});
+
+test('every module the menu loads is packaged and every tab has its panel', () => {
+  const html = read('popup.html');
+  for (const [, file] of html.matchAll(/<script[^>]*src="([^"]+)"/g)) assert.ok(exists(file), `${file} is missing`);
+  for (const tab of ['autobuy', 'glitch', 'checker', 'history', 'settings']) {
+    assert.ok(html.includes(`id="panel-${tab}"`) && html.includes(`data-tab="${tab}"`), `the ${tab} tab is incomplete`);
   }
 });

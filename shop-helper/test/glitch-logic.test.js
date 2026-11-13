@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  clampRest, interpretAnswer, normalizePrefs, normalizeShop, offerState, parseQuestion, visitKey, wantedAvailable,
+  clampRest, interpretAnswer, normalizePrefs, normalizeShop, offerState, parseQuestion, planCost, visitKey, wantedAvailable, withinLimit,
 } from '../glitch-logic.js';
 
 const offer = (over = {}) => ({ id: 'bitflip', price: 300, left: 1, bought: 0, ...over });
@@ -19,8 +19,8 @@ test('offer state follows the game button rules', () => {
 });
 
 test('prefs are cleaned up', () => {
-  assert.deepEqual(normalizePrefs(undefined), { alert: false, itemIds: [] });
-  assert.deepEqual(normalizePrefs({ alert: true, itemIds: ['glitch', 'glitch', 7, 'No Good', 'bitflip'] }), { alert: true, itemIds: ['glitch', 'bitflip'] });
+  assert.deepEqual(normalizePrefs(undefined), { alert: false, itemIds: [], limits: {}, notes: {} });
+  assert.deepEqual(normalizePrefs({ alert: true, itemIds: ['glitch', 'glitch', 7, 'No Good', 'bitflip'] }), { alert: true, itemIds: ['glitch', 'bitflip'], limits: {}, notes: {} });
   assert.equal(normalizePrefs({ alert: 'yes' }).alert, false);
 });
 
@@ -64,4 +64,31 @@ test('answers are interpreted like the game does', () => {
   assert.equal(interpretAnswer(null).kind, 'bad');
   assert.equal(clampRest(999999), 60000);
   assert.equal(clampRest(0), 8000);
+});
+
+test('price limits and notes are kept only when valid', () => {
+  const clean = normalizePrefs({
+    limits: { bitflip: '500', glitch: 0, overflow: 'x', 'Bad Id': 5, joke_unral: '' },
+    notes: { bitflip: '  wait for a deal  ', glitch: '   ', 'Bad Id': 'no', overflow: 7, joke_anomaly: 'x'.repeat(200) },
+  });
+  assert.deepEqual(clean.limits, { bitflip: 500 });
+  assert.equal(clean.notes.bitflip, 'wait for a deal');
+  assert.equal(clean.notes.joke_anomaly.length, 80);
+  assert.deepEqual(Object.keys(clean.notes).sort(), ['bitflip', 'joke_anomaly']);
+});
+
+test('a price limit keeps a ware out of alerts above it', () => {
+  assert.equal(withinLimit({ limits: { bitflip: 200 } }, offer()), false);
+  assert.equal(withinLimit({ limits: { bitflip: 300 } }, offer()), true, 'the limit itself is allowed');
+  assert.equal(withinLimit({ limits: {} }, offer()), true);
+  assert.deepEqual(wantedAvailable({ itemIds: [], limits: { bitflip: 200 } }, shop()), ['glitch']);
+  assert.deepEqual(wantedAvailable({ itemIds: ['bitflip'], limits: { bitflip: 200 } }, shop()), []);
+});
+
+test('the queue plan totals the wares still on the shelf against the wallet', () => {
+  const offers = [offer(), offer({ id: 'glitch', price: 900 }), offer({ id: 'overflow', price: 50, left: 0 }), offer({ id: 'joke_unral', bought: 1 })];
+  assert.deepEqual(planCost(offers, 1000), { count: 2, total: 1200, wallet: 1000, short: 200, covered: false });
+  assert.deepEqual(planCost(offers, 5000), { count: 2, total: 1200, wallet: 5000, short: 0, covered: true });
+  assert.deepEqual(planCost(offers, null), { count: 2, total: 1200, wallet: null, short: null, covered: false });
+  assert.deepEqual(planCost([], 10), { count: 0, total: 0, wallet: 10, short: 0, covered: true });
 });

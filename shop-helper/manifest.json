@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "RNGidle Shop Helper",
-  "version": "1.2.0",
-  "version_name": "v1.2-alpha",
-  "description": "Preview RNGidle numbers and automatically buy selected shop and Black Market items, from a menu inside the game.",
+  "version": "1.3.0",
+  "version_name": "v1.3-beta",
+  "description": "Preview RNGidle numbers, buy selected shop and Black Market items, and try Glitch's trials, from a menu inside the game.",
   "minimum_chrome_version": "120",
   "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
-  "permissions": ["alarms", "storage", "scripting"],
+  "permissions": ["alarms", "storage", "scripting", "notifications"],
   "host_permissions": ["https://rngidle.fun/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {
@@ -14,6 +14,6 @@
     "default_popup": "popup.html",
     "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
   },
-  "content_scripts": [{ "matches": ["https://rngidle.fun/*"], "js": ["content.js", "overlay.js"], "run_at": "document_idle" }],
+  "content_scripts": [{ "matches": ["https://rngidle.fun/*"], "js": ["sound.js", "content.js", "overlay.js"], "run_at": "document_idle" }],
   "web_accessible_resources": [{ "resources": ["popup.html"], "matches": ["https://rngidle.fun/*"] }]
 }

@@ -1,9 +1,13 @@
+import { defaultBundle, fromLegacyRule, normalizeBundle } from "./bundle.js";
+import { createBundlePanel } from "./popup-bundle.js";
+import { normalizeRarity, rarityPill, rarityTitle, setRarity } from "./popup-rarity.js";
+
 const state = {
   catalog: [],
   blackCatalog: [],
   snapshot: {},
-  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), safety: defaultSafety() },
-  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), safety: defaultSafety() },
+  draft: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), bundle: defaultBundle(), safety: defaultSafety() },
+  saved: { enabled: false, rules: [], blackMarket: defaultBlackMarket(), bundle: defaultBundle(), safety: defaultSafety() },
   ready: false,
   catalogLoaded: false,
   blackCatalogLoaded: false,
@@ -75,6 +79,18 @@ const elements = {
   compareClear: document.getElementById("compare-clear"),
 };
 
+const bundlePanel = createBundlePanel({
+  getBundle: () => state.draft.bundle,
+  patch(change) {
+    state.draft.bundle = normalizeBundle({ ...state.draft.bundle, ...change });
+    markDirty();
+  },
+  canEdit: () => state.ready && !state.saving,
+  getCatalog: () => state.catalog,
+  getNames: () => new Map(state.catalog.map((item) => [item.id, item.name])),
+  getProgress: (uid) => getProgress(uid),
+});
+
 function defaultBlackMarket() {
   return {
     enabled: false,
@@ -127,9 +143,17 @@ function normalizeSettings(value) {
   const rules = [];
   const seenIds = new Set();
   const seenUids = new Set();
+  // Bundles used to be a rule in the shop list; they are their own setting now, and an old
+  // "Any bundle" rule is carried over into it (keeping its key, so its progress is kept too).
+  const ownsBundle = value?.bundle && typeof value.bundle === "object";
+  let legacyBundle = null;
   for (const rule of Array.isArray(value?.rules) ? value.rules : []) {
     if (!rule || (typeof rule.id !== "string" && typeof rule.id !== "number")) continue;
     const id = String(rule.id);
+    if (id === "bundle") {
+      if (!ownsBundle && !legacyBundle) legacyBundle = fromLegacyRule(rule);
+      continue;
+    }
     if (seenIds.has(id)) continue;
     seenIds.add(id);
 
@@ -148,6 +172,7 @@ function normalizeSettings(value) {
     enabled: value?.enabled === true,
     rules,
     blackMarket: normalizeBlackMarket(value?.blackMarket),
+    bundle: ownsBundle ? normalizeBundle(value.bundle) : (legacyBundle ?? defaultBundle()),
     safety: normalizeSafety(value?.safety),
   };
 }
@@ -169,6 +194,7 @@ function cloneSettings(settings) {
       ...settings.blackMarket,
       itemIds: [...settings.blackMarket.itemIds],
     },
+    bundle: { ...settings.bundle, contains: [...settings.bundle.contains] },
     safety: { dryRun: settings.safety.dryRun, cap: { ...settings.safety.cap } },
   };
 }
@@ -180,6 +206,7 @@ function settingsChanged() {
 function updateSaveState() {
   const dirty = settingsChanged();
   elements.enabled.disabled = !state.ready || state.saving;
+  bundlePanel.renderDisabled();
   for (const control of [
     elements.blackMarketEnabled,
     elements.blackMarketMostExpensive,
@@ -632,7 +659,12 @@ function displayNumberResult(result) {
   const numberBlock = document.createElement("div");
   numberBlock.className = "checker-number-block";
   addText(numberBlock, "span", "checker-result-label", "Number");
-  addText(numberBlock, "strong", "checker-number", String(result.number ?? "—"));
+  const rarity = normalizeRarity(result.rarity);
+  const numberRow = document.createElement("div");
+  numberRow.className = "checker-number-row";
+  setRarity(addText(numberRow, "strong", "checker-number", String(result.number ?? "—")), rarity);
+  if (rarity) numberRow.append(rarityPill(rarity));
+  numberBlock.append(numberRow);
   summary.append(numberBlock);
 
   const scoreBlock = document.createElement("div");
@@ -815,6 +847,7 @@ function importSettings(raw) {
   elements.enabled.checked = false;
   renderCatalog();
   renderBlackMarket();
+  bundlePanel.load();
   renderSafety();
   markDirty("Imported settings are not saved yet.");
 }
@@ -828,6 +861,7 @@ function summarizeResult(result) {
   return {
     number: String(result.number ?? ""),
     totalScore: Number(result.totalScore),
+    rarity: normalizeRarity(result.rarity),
     badges: (Array.isArray(result.badges) ? result.badges : []).slice(0, 60).map((badge) => ({
       id: String(badge?.id ?? badge?.label ?? ""),
       label: String(badge?.label ?? badge?.id ?? ""),
@@ -865,7 +899,9 @@ function renderRecent() {
     chip.className = "chip chip-button";
     chip.dataset.example = entry.number;
     chip.textContent = entry.number.length > 14 ? `${entry.number.slice(0, 13)}…` : entry.number;
-    chip.title = `${entry.number} · ${compactEPValue(entry.totalScore) || formatEPValue(entry.totalScore)} EP`;
+    const rarity = normalizeRarity(entry.rarity);
+    setRarity(chip, rarity);
+    chip.title = [entry.number, rarityTitle(rarity), `${compactEPValue(entry.totalScore) || formatEPValue(entry.totalScore)} EP`].filter(Boolean).join(" · ");
     elements.recentChips.append(chip);
   }
 }
@@ -874,8 +910,10 @@ function addCompareColumn(summary, label) {
   const column = document.createElement("div");
   column.className = "compare-col";
   addText(column, "span", "compare-label", label);
+  const rarity = normalizeRarity(summary.rarity);
   addText(column, "strong", "compare-number", summary.number.length > 18 ? `${summary.number.slice(0, 17)}…` : summary.number);
   addText(column, "span", "compare-score", `${formatEPValue(summary.totalScore)} EP`);
+  if (rarity) column.append(rarityPill(rarity, { small: true }));
   elements.compareCols.append(column);
 }
 
@@ -1128,7 +1166,6 @@ function loadCatalog() {
       const id = String(item.id);
       if (!items.has(id)) items.set(id, { id, name: String(item.name), price: item.price });
     }
-    items.set("bundle", { id: "bundle", name: "Any bundle", price: null });
     return [...items.values()];
   });
 }
@@ -1165,6 +1202,8 @@ function validateSettings() {
       return "Choose a purchase rule for every selected item.";
     }
   }
+  const bundleProblem = bundlePanel.validate();
+  if (bundleProblem) return bundleProblem;
   const minimumPrice = state.draft.blackMarket.minimumPrice;
   if (state.draft.blackMarket.minimumEnabled &&
     (typeof minimumPrice !== "number" || !Number.isFinite(minimumPrice) || minimumPrice < 0)) {
@@ -1202,6 +1241,7 @@ async function saveSettings() {
         ? state.draft.blackMarket.minimumPrice
         : 0,
     },
+    bundle: normalizeBundle(state.draft.bundle),
     safety: {
       dryRun: state.draft.safety.dryRun,
       cap: {
@@ -1231,6 +1271,7 @@ async function saveSettings() {
     updateSaveState();
     renderCatalog();
     renderBlackMarket();
+    bundlePanel.load();
     renderSafety();
 
     try {
@@ -1261,6 +1302,7 @@ function handleStorageChanges(changes, areaName) {
     elements.enabled.checked = state.draft.enabled;
     renderCatalog();
     renderBlackMarket();
+    bundlePanel.load();
     renderSafety();
   } else if (settingsUpdated) {
     elements.saveMessage.textContent = "Settings changed elsewhere; your unsaved edits are still here.";
@@ -1271,6 +1313,7 @@ function handleStorageChanges(changes, areaName) {
   renderStatus();
   if ("progress" in changes) {
     renderProgress();
+    bundlePanel.renderProgress();
     renderBlackMarketRecovery();
   }
   if ("activity" in changes) renderActivity();
@@ -1312,6 +1355,7 @@ async function initialize() {
   renderStatus();
   renderCatalog();
   renderBlackMarket();
+  bundlePanel.load();
   renderSafety();
   renderActivity();
   updateSaveState();

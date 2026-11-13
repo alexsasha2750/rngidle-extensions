@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="popup.css">
     <link rel="stylesheet" href="popup-update.css">
     <link rel="stylesheet" href="popup-launcher.css">
-    <script src="popup.js" defer></script>
+    <script type="module" src="popup.js"></script>
     <script src="popup-ui.js" defer></script>
     <script type="module" src="popup-glitch.js"></script>
     <script type="module" src="popup-market.js"></script>
@@ -150,6 +150,7 @@
               <span class="tab-thumb" aria-hidden="true"></span>
               <button class="tab" id="subtab-glim" type="button" role="tab" aria-selected="true" aria-controls="subpanel-glim" data-tab="glim">Glim’s shop</button>
               <button class="tab" id="subtab-black" type="button" role="tab" aria-selected="false" aria-controls="subpanel-black" data-tab="black" tabindex="-1">Black Market</button>
+              <button class="tab" id="subtab-bundle" type="button" role="tab" aria-selected="false" aria-controls="subpanel-bundle" data-tab="bundle" tabindex="-1" data-i18n="bundle.tab">Bundles</button>
             </div>
 
             <!-- Glim's shop -->
@@ -247,6 +248,105 @@
                 </div>
               </div>
               <p class="uncertain-market-status" id="black-market-uncertain-status" role="status" aria-live="polite" hidden></p>
+            </section>
+
+            <!-- Bundles -->
+            <section class="subpanel" id="subpanel-bundle" role="tabpanel" aria-labelledby="subtab-bundle" hidden>
+              <section class="card master" aria-labelledby="bundle-heading">
+                <div class="switch-row">
+                  <div class="switch-copy">
+                    <h2 id="bundle-heading" data-i18n="bundle.title">Bundles</h2>
+                    <p data-i18n="bundle.needsMain">Also needs the main Automatic purchases switch.</p>
+                  </div>
+                  <label class="switch" for="bundle-enabled">
+                    <input id="bundle-enabled" type="checkbox" data-i18n-attr="aria-label:bundle.enableLabel" aria-label="Enable bundle automatic purchases" disabled>
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </label>
+                </div>
+                <p class="notice notice-warn notice-inline"><strong data-i18n="bundle.warnTitle">EP can be spent</strong> <span data-i18n="bundle.warnText">when both switches are on.</span></p>
+                <p class="meta" id="bundle-progress" hidden></p>
+              </section>
+
+              <section class="card bundle-now" id="bundle-now" aria-labelledby="bundle-now-heading">
+                <h2 id="bundle-now-heading" data-i18n="bundle.nowHeading">Right now</h2>
+                <p class="bundle-now-empty" id="bundle-now-empty" data-i18n="bundle.nowOpenGame">Open an RNGidle tab to see Glim’s current bundle.</p>
+                <div class="bundle-now-body" id="bundle-now-body" hidden>
+                  <div class="bundle-now-head"><strong id="bundle-now-name"></strong><span class="chip" id="bundle-now-tier"></span></div>
+                  <p class="bundle-now-meta" id="bundle-now-meta"></p>
+                  <p class="bundle-now-items" id="bundle-now-items"></p>
+                  <p class="bundle-verdict" id="bundle-now-verdict" role="status"></p>
+                </div>
+              </section>
+
+              <div class="section-head">
+                <div>
+                  <h2 data-i18n="bundle.whenHeading">When to buy</h2>
+                  <p data-i18n="bundle.whenHelp">How often and how many. The game allows up to 3 bundles per shop, depending on your shop level.</p>
+                </div>
+              </div>
+              <div class="segmented segmented-2" id="bundle-mode" role="radiogroup" data-i18n-attr="aria-label:bundle.modeLegend" aria-label="Buy">
+                <label><input type="radio" name="bundle-mode" value="once" disabled><span data-i18n="bundle.modeOnce">Once</span></label>
+                <label><input type="radio" name="bundle-mode" value="restock" disabled><span data-i18n="bundle.modeRestock">Every new shop restock</span></label>
+              </div>
+              <p class="fine-print bundle-mode-help" id="bundle-mode-help"></p>
+              <label class="field-label" for="bundle-quantity">
+                <span id="bundle-quantity-label">How many bundles per shop</span>
+                <input id="bundle-quantity" type="number" min="1" max="1000" step="1" inputmode="numeric" value="1" disabled>
+              </label>
+              <p class="field-error" id="bundle-quantity-error" role="alert" hidden></p>
+
+              <div class="section-head">
+                <div>
+                  <h2 data-i18n="bundle.filtersHeading">Only buy if…</h2>
+                  <p data-i18n="bundle.filtersHelp">Every filter you turn on has to pass. With none turned on, any bundle you can afford is bought.</p>
+                </div>
+              </div>
+              <div class="black-filters">
+                <label class="filter-option" for="bundle-max-price-on">
+                  <input id="bundle-max-price-on" type="checkbox" disabled>
+                  <span><strong data-i18n="bundle.maxPriceTitle">Price at most</strong><small data-i18n="bundle.maxPriceHelp">Skip bundles that cost more than this much EP each.</small></span>
+                </label>
+                <label class="field-label bundle-field" for="bundle-max-price">
+                  <span data-i18n="bundle.maxPriceLabel">Highest price (EP)</span>
+                  <input id="bundle-max-price" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:bundle.epPlaceholder" placeholder="e.g. 1.5B" disabled>
+                </label>
+                <p class="field-error" id="bundle-max-price-error" role="alert" hidden></p>
+
+                <label class="filter-option" for="bundle-discount-on">
+                  <input id="bundle-discount-on" type="checkbox" disabled>
+                  <span><strong data-i18n="bundle.discountTitle">Discount at least</strong><small data-i18n="bundle.discountHelp">Skip bundles with less than this percent off their listed value.</small></span>
+                </label>
+                <label class="field-label bundle-field" for="bundle-discount">
+                  <span data-i18n="bundle.discountLabel">Smallest discount (%)</span>
+                  <input id="bundle-discount" type="number" min="0" max="99" step="any" inputmode="decimal" value="10" disabled>
+                </label>
+                <p class="field-error" id="bundle-discount-error" role="alert" hidden></p>
+
+                <label class="filter-option" for="bundle-reserve-on">
+                  <input id="bundle-reserve-on" type="checkbox" disabled>
+                  <span><strong data-i18n="bundle.reserveTitle">Keep a reserve</strong><small data-i18n="bundle.reserveHelp">Never spend EP if it would leave you with less than this.</small></span>
+                </label>
+                <label class="field-label bundle-field" for="bundle-reserve">
+                  <span data-i18n="bundle.reserveLabel">EP to keep</span>
+                  <input id="bundle-reserve" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:bundle.epPlaceholder" placeholder="e.g. 1.5B" disabled>
+                </label>
+                <p class="field-error" id="bundle-reserve-error" role="alert" hidden></p>
+              </div>
+
+              <div class="section-head">
+                <div>
+                  <h2 data-i18n="bundle.containsHeading">Must contain</h2>
+                  <p data-i18n="bundle.containsHelp">Only buy bundles that hold at least one of these items. Leave it empty to allow any bundle.</p>
+                </div>
+                <span class="count-badge" id="bundle-contains-count">0 selected</span>
+              </div>
+              <label class="search-field black-search" for="bundle-search">
+                <span class="visually-hidden" data-i18n="bundle.containsSearch">Search items</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+                <input id="bundle-search" type="search" autocomplete="off" data-i18n-attr="placeholder:bundle.containsSearch" placeholder="Search items" disabled>
+              </label>
+              <p class="empty-state" id="bundle-list-empty" role="status" hidden data-i18n="bundle.containsNone">No matching items.</p>
+              <div class="black-market-list bundle-list" id="bundle-list" aria-live="polite"></div>
             </section>
 
             <details class="card activity-card" id="activity-card">
@@ -453,6 +553,15 @@
                 <span><strong>Calm his screen effects</strong><small>While he’s around, the game tilts and shakes the page, clips buttons, fringes text with colour and adds static and scanlines. This turns those looks off so everything stays clean and easy to click.</small></span>
               </label>
               <p class="fine-print">Only changes how the game looks on your screen, right away. His shop’s glitches, his arrival scene and his minigame are left as the game has them. Nothing is sent to the game.</p>
+            </section>
+
+            <section class="card" aria-labelledby="potion-numbers-heading">
+              <h2 id="potion-numbers-heading" data-i18n="settings.potionNumbersTitle">Potion results</h2>
+              <label class="filter-option" for="potion-numbers">
+                <input id="potion-numbers" type="checkbox">
+                <span><strong data-i18n="settings.potionNumbersLabel">Show the number a potion found</strong><small data-i18n="settings.potionNumbersHelp">Hover a potion’s result in the bulk-roll potion table and the number its best roll ended up as is added right after the EP. Works for variant potions and badge potions.</small></span>
+              </label>
+              <p class="fine-print" data-i18n="settings.potionNumbersFine">Only changes the hover text on your screen, right away. Nothing is sent to the game. If the game hides a number (a sealed bulk roll), there is nothing to add.</p>
             </section>
 
             <section class="card" id="launcher-card" aria-labelledby="launcher-heading"></section>

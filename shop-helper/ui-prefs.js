@@ -31,6 +31,8 @@ export function normalizeUiPrefs(value) {
     compact: value?.compact === true,
     // Switches off the game's screen-distorting effects while Glitch is around.
     calmGlitch: value?.calmGlitch === true,
+    // Adds the number to the hover text of a potion's result in the bulk-roll potion table.
+    potionNumbers: value?.potionNumbers === true,
     launcher: {
       mode: LAUNCHER_MODES.includes(value?.launcher?.mode) ? value.launcher.mode : 'normal',
       size: LAUNCHER_SIZES.includes(value?.launcher?.size) ? value.launcher.size : 'normal',

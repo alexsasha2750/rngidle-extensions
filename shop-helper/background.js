@@ -8,6 +8,7 @@ import { addHistory } from './history.js';
 import { createNotifier, formatEp, GAME_TABS } from './notify.js';
 import { marketStatus, walletOf } from './market.js';
 import { normalizeUiPrefs, wantsEvent } from './ui-prefs.js';
+import { bundleSignature, rulesOf, withBundleRule } from './bundle.js';
 import { createUpdateService } from './update-service.js';
 import { registerMenuCommands } from './menu-commands.js';
 
@@ -161,6 +162,8 @@ async function runCheck(depth = 0, dry = { count: 0, spent: 0 }) {
   if (depth >= 100) return status('error', 'Too many purchases in one check. Pausing until the next check.');
   let { settings, progress = {}, pendingPurchase, boundAccount, spend, dryRunSeen } =
     await storage.get(['settings', 'progress', 'pendingPurchase', 'boundAccount', 'spend', 'dryRunSeen']);
+  // The bundle is its own setting; the planner buys it through a rule made from it.
+  settings = withBundleRule(settings);
   const rules = Array.isArray(settings?.rules) ? settings.rules : [];
   const blackMarketEnabled = settings?.blackMarket?.enabled === true;
   if (!settings?.enabled) return status('paused', 'Automatic buying is paused.');
@@ -311,7 +314,7 @@ async function runCheck(depth = 0, dry = { count: 0, spent: 0 }) {
       };
     } else {
       pendingPurchase = {
-        ...(selection.kind === 'bundle' ? { kind: 'bundle', targetQuantity: selection.targetQuantity } : {}),
+        ...(selection.kind === 'bundle' ? { kind: 'bundle', targetQuantity: selection.targetQuantity, bundleSig: bundleSignature(settings) } : {}),
         uid: selection.rule.uid, item: selection.item.id, name: selection.item.name, qty: selection.quantity,
         price: selection.item.price, ruleQuantity: selection.rule.quantity, mode: selection.rule.mode, key: selection.key,
         slot: activeShop.slot, accountId, requestId: crypto.randomUUID()
@@ -319,7 +322,7 @@ async function runCheck(depth = 0, dry = { count: 0, spent: 0 }) {
     }
     await storage.set({ pendingPurchase });
   }
-  const fresh = (await storage.get('settings')).settings;
+  const fresh = withBundleRule((await storage.get('settings')).settings);
   // A cap lowered or a dry run switched on while this purchase was being prepared wins.
   if (!recovering && JSON.stringify(normalizeSafety(fresh?.safety)) !== JSON.stringify(safety)) {
     await storage.remove('pendingPurchase');
@@ -334,6 +337,11 @@ async function runCheck(depth = 0, dry = { count: 0, spent: 0 }) {
     }
   } else {
     const freshRule = fresh?.rules?.find(rule => rule.uid === pendingPurchase.uid && rule.id === pendingPurchase.item);
+    // Bundle filters edited while this purchase was being prepared: the next check uses the new ones.
+    if (!recovering && pendingPurchase.kind === 'bundle' && pendingPurchase.bundleSig !== undefined && pendingPurchase.bundleSig !== bundleSignature(fresh)) {
+      await storage.remove('pendingPurchase');
+      return status('waiting', 'Settings changed before the next purchase. The next check will use the new settings.');
+    }
     if (!fresh?.enabled || !freshRule || freshRule.quantity !== pendingPurchase.ruleQuantity || freshRule.mode !== pendingPurchase.mode) {
       if (!recovering) await storage.remove('pendingPurchase');
       return status('waiting', recovering
@@ -430,6 +438,17 @@ chrome.runtime.onStartup.addListener(() => {
   // A new browser session: the storage.local fallback session id must not carry over.
   void storage.remove('sessionId').catch(() => {}).then(() => check());
 });
+// The tier is used as a CSS attribute value, so only plain ids pass (e.g. 'numinous_ineffability_303').
+const RARITY_TIER = /^[a-z][a-z0-9_]{2,31}$/;
+// The game's pill labels are upper case ('COSMIC HORROR'); the menu shows 'Cosmic Horror'.
+const titleCase = text => text.replaceAll('_', ' ').toLowerCase().replace(/(^|[\s-])\p{L}/gu, start => start.toUpperCase());
+function checkedRarity(rarity) {
+  const tier = typeof rarity?.tier === 'string' ? rarity.tier : '';
+  if (!RARITY_TIER.test(tier)) return null;
+  const given = typeof rarity.label === 'string' ? rarity.label.trim() : '';
+  const label = titleCase(given && given.length <= 40 ? given : tier);
+  return { tier, label: label.slice(0, 40) };
+}
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'SITE_READY') { void check(); void updates.onSiteReady().catch(() => {}); return; }
   const updateReply = updates.handle(message);
@@ -466,7 +485,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
               const engine = await import('/engine.js');
               const result = engine.composeRollResult(number);
-              return { ok: true, result };
+              // The game's own rarity for this roll; the checker still works without it.
+              let rarity = null;
+              try {
+                let tier = engine.getCardRarityTier?.(result?.totalScore, result?.number ?? number);
+                if (tier === 'transcendant') tier = 'transcendent';
+                if (typeof tier === 'string' && tier) {
+                  const label = engine.RARITY_PALETTE?.[tier]?.pill?.label;
+                  rarity = { tier, label: typeof label === 'string' ? label : '' };
+                }
+              } catch { rarity = null; }
+              return { ok: true, result, rarity };
             } catch (error) {
               return { ok: false, error: error?.message || 'The game could not analyze this number.' };
             }
@@ -481,6 +510,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return { ok: true, result: {
           number: result.number,
           totalScore: result.totalScore,
+          rarity: checkedRarity(response.rarity),
           badges: result.badges.map(badge => ({
             id: String(badge.id ?? ''), label: String(badge.label ?? badge.id ?? ''),
             emoji: String(badge.emoji ?? ''), score: Number(badge.score) || 0,
@@ -496,7 +526,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'SETTINGS_CHANGED') {
     (async () => {
       const { settings } = await storage.get('settings');
-      if (!settings?.rules?.length && settings?.blackMarket?.enabled !== true) await storage.remove('boundAccount');
+      if (!rulesOf(settings).length && settings?.blackMarket?.enabled !== true) await storage.remove('boundAccount');
       await ensureAlarm();
       await check();
     })().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));

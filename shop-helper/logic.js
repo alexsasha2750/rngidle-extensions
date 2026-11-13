@@ -1,3 +1,5 @@
+import { bundleAllowed, rulesOf } from './bundle.js';
+
 export const MAX_BUNDLES_PER_SHOP = 3;
 
 export function shopKey(shop) {
@@ -14,7 +16,7 @@ function validRule(rule) {
 // A spending cap allowance: Infinity when there is no cap; anything unusable fails closed.
 const allowanceOf = budget => (typeof budget === 'number' && budget >= 0 ? budget : 0);
 
-function chooseBundle(rule, previous, shop, key, wallet, budget = Infinity) {
+function chooseBundle(rule, previous, shop, key, wallet, budget = Infinity, filters = null) {
   if (previous?.status === 'complete' || previous?.status === 'uncertain' ||
       (previous?.status === 'error' && previous.lastSlot === key)) return null;
   const offer = shop.bundle ?? shop.items.find(entry => entry.id === 'bundle');
@@ -25,7 +27,10 @@ function chooseBundle(rule, previous, shop, key, wallet, budget = Infinity) {
       !Number.isFinite(price) || price <= 0) return null;
 
   const stock = Math.min(left, Math.max(0, MAX_BUNDLES_PER_SHOP - bought));
-  const affordable = Math.floor(wallet / price);
+  // EP the player asked to keep is not spent on bundles.
+  const reserve = filters ? Math.max(0, Number(filters.reserve) || 0) : 0;
+  const affordable = Math.floor(Math.max(0, wallet - reserve) / price);
+  if (filters && !bundleAllowed(filters, offer).ok) return null;
   let targetQuantity;
   if (rule.mode === 'once') {
     if (previous?.totalBought > 0 && previous.lastSlot !== key) return null;
@@ -49,6 +54,7 @@ function chooseBundle(rule, previous, shop, key, wallet, budget = Infinity) {
     item: { id: 'bundle', name: typeof offer.name === 'string' ? offer.name : 'Glim bundle', price },
     quantity: 1,
     targetQuantity,
+    reserve,
     key,
     kind: 'bundle'
   };
@@ -61,11 +67,12 @@ export function choosePurchase(settings, progress, shop, catalog, budget = Infin
   if (!Number.isFinite(wallet) || wallet < 0) return null;
   const allowance = allowanceOf(budget);
 
-  for (const rule of settings.rules || []) {
+  const filters = settings.bundle && typeof settings.bundle === 'object' ? settings.bundle : null;
+  for (const rule of rulesOf(settings)) {
     if (!validRule(rule)) continue;
     const previous = progress[rule.uid];
     if (rule.id === 'bundle') {
-      const bundle = chooseBundle(rule, previous, shop, key, wallet, allowance);
+      const bundle = chooseBundle(rule, previous, shop, key, wallet, allowance, filters);
       if (bundle) return bundle;
       continue;
     }
@@ -98,7 +105,7 @@ export function bundleRunLength(selection, previous, shop, budget = Infinity) {
     ? previous?.totalBought ?? 0
     : (previous?.lastSlot === selection.key ? previous.slotBought ?? 0 : 0);
   const count = Math.min(selection.targetQuantity - already, stock,
-    Math.floor(Number(shop.wallet?.effective) / price), Math.floor(allowanceOf(budget) / price));
+    Math.floor(Math.max(0, Number(shop.wallet?.effective) - (Number(selection.reserve) || 0)) / price), Math.floor(allowanceOf(budget) / price));
   return Number.isSafeInteger(count) && count > 1 ? count : 1;
 }
 

@@ -502,6 +502,63 @@ option { background: var(--surface); color: var(--text); }
 .checker-badge-multiplier { flex: none; padding: 2px 7px; border-radius: 999px; font: 700 11px var(--mono); color: var(--t-accent); background: var(--accent-soft); }
 .checker-nonscoring { flex: none; font-size: 11px; color: var(--faint); }
 
+/* ---------- Checker: rarity ----------
+   Colours follow the game: pills use RARITY_PALETTE (hex + highlight.border), the number is drawn
+   like its rolled number card (rank-*-surface / rank-*-number). Only the seven base tiers change
+   with the theme, as they do in the game; the rest have their own fixed surface. No animation. */
+
+.checker-number-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.checker-number[data-rarity] {
+  max-width: 100%; padding: 5px 12px; border-radius: 10px; font-weight: 800;
+  color: var(--rar-fg, var(--text)); background: var(--rar-bg, rgba(var(--ink), 0.05));
+  border: 1px solid var(--rar-line, var(--line-strong)); box-shadow: var(--rar-glow, none); text-shadow: var(--rar-shadow, none);
+}
+.rarity-pill {
+  flex: none; justify-self: start; display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--rar-pill-fg, var(--text)); background: var(--rar-pill, rgba(var(--ink), 0.08)); border: 1px solid var(--rar-accent, var(--line-strong));
+}
+.rarity-pill.is-small { margin-top: 4px; padding: 1px 7px; font-size: 9.5px; }
+.chip[data-rarity]::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rar-accent); box-shadow: 0 0 0 1px rgba(var(--ink), 0.3); }
+
+/* Base tiers: dark theme (default) … */
+[data-rarity="trash"] { --rar-pill: #c8a87c; --rar-pill-fg: #5c3310; --rar-accent: #c8a87c; --rar-fg: #fcd34d; --rar-line: #92400e; --rar-bg: linear-gradient(135deg, rgba(120, 53, 15, 0.6), #27272a, rgba(120, 53, 15, 0.6)); }
+[data-rarity="common"] { --rar-pill: #e5e7eb; --rar-pill-fg: #1f2937; --rar-accent: #9ca3af; --rar-fg: #e5e7eb; --rar-line: #71717a; --rar-bg: linear-gradient(135deg, rgba(63, 63, 70, 0.5), #27272a, rgba(63, 63, 70, 0.5)); }
+[data-rarity="uncommon"] { --rar-pill: #d1fae5; --rar-pill-fg: #065f46; --rar-accent: #059669; --rar-fg: #34d399; --rar-line: #065f46; --rar-bg: linear-gradient(135deg, rgba(6, 78, 59, 0.6), #27272a, rgba(6, 78, 59, 0.6)); --rar-glow: 0 0 12px rgba(16, 185, 129, 0.25); }
+[data-rarity="rare"] { --rar-pill: #dbeafe; --rar-pill-fg: #1e40af; --rar-accent: #2563eb; --rar-fg: #60a5fa; --rar-line: #1e40af; --rar-bg: linear-gradient(135deg, rgba(30, 58, 138, 0.6), #27272a, rgba(30, 58, 138, 0.6)); --rar-glow: 0 0 14px rgba(59, 130, 246, 0.35); }
+[data-rarity="epic"] { --rar-pill: #ede9fe; --rar-pill-fg: #6b21a8; --rar-accent: #7c3aed; --rar-fg: #c084fc; --rar-line: #6b21a8; --rar-bg: linear-gradient(135deg, rgba(88, 28, 135, 0.6), #27272a, rgba(88, 28, 135, 0.6)); --rar-glow: 0 0 16px rgba(168, 85, 247, 0.4); }
+[data-rarity="anomaly"] { --rar-pill: #fed7aa; --rar-pill-fg: #9a3412; --rar-accent: #ea580c; --rar-fg: #fb923c; --rar-line: #9a3412; --rar-bg: linear-gradient(135deg, rgba(124, 45, 18, 0.6), #27272a, rgba(124, 45, 18, 0.6)); --rar-glow: 0 0 18px rgba(249, 115, 22, 0.4); }
+[data-rarity="mythic"] { --rar-pill: #fecaca; --rar-pill-fg: #991b1b; --rar-accent: #db2777; --rar-fg: #f3f4f6; --rar-line: #9d174d; --rar-bg: linear-gradient(135deg, rgba(136, 19, 55, 0.55), rgba(88, 28, 135, 0.45), rgba(22, 78, 99, 0.55)); --rar-glow: 0 0 20px rgba(236, 72, 153, 0.4), 0 0 32px rgba(168, 85, 247, 0.15); }
+/* … and light theme. */
+html[data-theme="light"] [data-rarity="trash"] { --rar-accent: #7c5a2e; --rar-fg: #92400e; --rar-line: #fcd34d; --rar-bg: linear-gradient(135deg, #fffbeb, #ffffff, #fffbeb); }
+html[data-theme="light"] [data-rarity="common"] { --rar-accent: #6b7280; --rar-fg: #374151; --rar-line: #9ca3af; --rar-bg: linear-gradient(135deg, #f3f4f6, #ffffff, #f3f4f6); }
+html[data-theme="light"] [data-rarity="uncommon"] { --rar-fg: #065f46; --rar-line: #6ee7b7; --rar-bg: linear-gradient(135deg, #d1fae5, #f0fdf4, #d1fae5); --rar-glow: 0 0 8px rgba(16, 185, 129, 0.15); }
+html[data-theme="light"] [data-rarity="rare"] { --rar-fg: #1e40af; --rar-line: #93c5fd; --rar-bg: linear-gradient(135deg, #dbeafe, #f0f9ff, #dbeafe); --rar-glow: 0 0 10px rgba(59, 130, 246, 0.2); }
+html[data-theme="light"] [data-rarity="epic"] { --rar-fg: #6b21a8; --rar-line: #d8b4fe; --rar-bg: linear-gradient(135deg, #f3e8ff, #fdf4ff, #f3e8ff); --rar-glow: 0 0 12px rgba(168, 85, 247, 0.2); }
+html[data-theme="light"] [data-rarity="anomaly"] { --rar-fg: #9a3412; --rar-line: #fdba74; --rar-bg: linear-gradient(135deg, #ffedd5, #fffbeb, #ffedd5); --rar-glow: 0 0 14px rgba(249, 115, 22, 0.2); }
+html[data-theme="light"] [data-rarity="mythic"] { --rar-fg: #111827; --rar-line: #f9a8d4; --rar-bg: linear-gradient(135deg, #ffe4e6, #faf5ff, #cffafe); --rar-glow: 0 0 16px rgba(236, 72, 153, 0.2), 0 0 28px rgba(168, 85, 247, 0.08); }
+
+/* Higher tiers: the game's own number card, the same in both themes. */
+[data-rarity="trashest"] { --rar-pill: #4b4650; --rar-pill-fg: #f2edef; --rar-accent: #8d8590; --rar-fg: #f5f0f2; --rar-line: #655d66; --rar-bg: linear-gradient(135deg, #4b454d, #746d74); }
+[data-rarity="secret"] { --rar-pill: #21172d; --rar-pill-fg: #fbe5ff; --rar-accent: #be85e6; --rar-fg: #fbe5ff; --rar-line: #74498c; --rar-bg: linear-gradient(135deg, #21172d, #3a2650); --rar-glow: 0 0 14px rgba(190, 133, 230, 0.4); }
+[data-rarity="unral"] { --rar-pill: #7adbbc; --rar-pill-fg: #173b32; --rar-accent: #54b497; --rar-fg: #245548; --rar-line: #54b497; --rar-bg: linear-gradient(135deg, #7adbbc, #e8fff4 47%, #f4adc8); --rar-glow: 0 0 14px rgba(122, 219, 188, 0.55), 0 0 22px rgba(244, 172, 200, 0.3); }
+[data-rarity="aberration"] { --rar-pill: #23132a; --rar-pill-fg: #ffffff; --rar-accent: #9d74ce; --rar-fg: #ffffff; --rar-line: #9d74ce; --rar-bg: linear-gradient(122deg, #281126, #42305d 48%, #1b3158); --rar-shadow: -1px 0 #ff365f, 1px 0 #3b9cff, 0 0 8px rgba(255, 255, 255, 0.6); --rar-glow: -6px 0 16px rgba(255, 50, 87, 0.35), 6px 0 16px rgba(57, 153, 255, 0.35); }
+[data-rarity="otherworldly"] { --rar-pill: #050805; --rar-pill-fg: #b8ff6a; --rar-accent: #2bd957; --rar-fg: #b8ff6a; --rar-line: #2bd957; --rar-bg: radial-gradient(circle at 50% 40%, #0f1f0f, #050805 72%); --rar-shadow: 0 0 6px rgba(57, 255, 106, 0.6), 0 1px 0 #000; --rar-glow: 0 0 16px rgba(57, 255, 106, 0.4); }
+[data-rarity="cataclysmic"] { --rar-pill: #1a0603; --rar-pill-fg: #ffd2a1; --rar-accent: #ff4a1c; --rar-fg: #ffd2a1; --rar-line: #b3200c; --rar-bg: radial-gradient(ellipse 80% 60% at 50% 125%, rgba(255, 207, 106, 0.6), rgba(255, 74, 28, 0.33) 45%, transparent 78%), linear-gradient(180deg, #1a0603, #2a0904); --rar-shadow: 0 0 4px #ff8a2a, 0 0 12px rgba(255, 58, 18, 0.8); --rar-glow: 0 0 16px rgba(255, 74, 28, 0.5); }
+[data-rarity="divine"] { --rar-pill: #fff9df; --rar-pill-fg: #775813; --rar-accent: #c6a13a; --rar-fg: #795c16; --rar-line: #c6a13a; --rar-bg: linear-gradient(135deg, #ffffff, #fff8df 50%, #efd27a); --rar-glow: 0 0 16px rgba(232, 191, 75, 0.55); }
+[data-rarity="transcendent"] { --rar-pill: #fff4fb; --rar-pill-fg: #713956; --rar-accent: #d48aae; --rar-fg: #713956; --rar-line: #d48aae; --rar-bg: linear-gradient(125deg, #ffffff, #ffe8f4 45%, #f6b3d6 75%, #ffffff); --rar-shadow: 0 0 8px #ffffff; --rar-glow: 0 0 16px rgba(248, 182, 216, 0.6); }
+[data-rarity="voidborne"] { --rar-pill: #060103; --rar-pill-fg: #ffd9df; --rar-accent: #c0213f; --rar-fg: #ffd9df; --rar-line: #5e0b1e; --rar-bg: radial-gradient(circle at 50% 40%, #2a0610, #060103 72%); --rar-shadow: 0 0 8px rgba(192, 33, 63, 0.85); --rar-glow: 0 0 16px rgba(192, 33, 63, 0.45); }
+[data-rarity="emperor"] { --rar-pill: #f4efe4; --rar-pill-fg: #5a4210; --rar-accent: #b8913e; --rar-fg: #5a4210; --rar-line: #b8913e; --rar-bg: linear-gradient(135deg, #f4efe4, #fbf7ee 50%, #e7c06a); --rar-glow: 0 0 16px rgba(231, 192, 106, 0.55); }
+[data-rarity="alcubierre"] { --rar-pill: #03040b; --rar-pill-fg: #e6f6ff; --rar-accent: #7fd6ff; --rar-fg: #e6f6ff; --rar-line: #3c5c9c; --rar-bg: radial-gradient(ellipse at 50% 40%, #101a38, #03040b 75%); --rar-shadow: 0 0 8px rgba(127, 214, 255, 0.85), 0 0 16px rgba(197, 139, 255, 0.5); --rar-glow: 0 0 16px rgba(127, 214, 255, 0.35), 0 0 24px rgba(197, 139, 255, 0.2); }
+[data-rarity="eleutheria"] { --rar-pill: #05060f; --rar-pill-fg: #eef0ff; --rar-accent: #a9b8ff; --rar-fg: #eef0ff; --rar-line: #5a64a8; --rar-bg: radial-gradient(ellipse at 50% 40%, #161a38, #05060f 75%); --rar-shadow: 0 0 8px rgba(169, 184, 255, 0.85); --rar-glow: 0 0 16px rgba(169, 184, 255, 0.35), 0 0 24px rgba(255, 217, 168, 0.2); }
+[data-rarity="singularity"] { --rar-pill: #08090d; --rar-pill-fg: #ffffff; --rar-accent: #5b6478; --rar-fg: #ffffff; --rar-line: #000000; --rar-bg: radial-gradient(circle at 50% 30%, #30384c, #080a13 55%, #010104); --rar-shadow: 0 1px 6px #000; --rar-glow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 18px rgba(0, 0, 0, 0.55); }
+[data-rarity="goldweaver"] { --rar-pill: #ffe89a; --rar-pill-fg: #5b3b00; --rar-accent: #b8860b; --rar-fg: #5b3b00; --rar-line: #b8860b; --rar-bg: linear-gradient(135deg, #fff3c4, #ffe89a 50%, #ffcf4a); --rar-glow: 0 0 18px rgba(255, 207, 74, 0.6); }
+[data-rarity="cosmic_horror"] { --rar-pill: #100d1b; --rar-pill-fg: #d8ffae; --rar-accent: #c4ff8a; --rar-fg: #d9ffb3; --rar-line: #38224f; --rar-bg: radial-gradient(circle at 56% 35%, #3a1245, #100a1d 40%, #010104 90%); --rar-shadow: 1px 0 #ff4db8, -1px 0 #58e5ff, 0 0 9px #b1ff78; --rar-glow: 0 0 16px rgba(196, 255, 138, 0.3); }
+[data-rarity="godslayer"] { --rar-pill: #05070c; --rar-pill-fg: #eaf6ff; --rar-accent: #7cc8ff; --rar-fg: #eaf6ff; --rar-line: #3a5878; --rar-bg: radial-gradient(ellipse at 50% 40%, #13243c, #05070c 75%); --rar-shadow: 0 0 8px rgba(124, 200, 255, 0.85), 0 0 14px rgba(255, 154, 60, 0.45); --rar-glow: 0 0 16px rgba(124, 200, 255, 0.35), 0 0 26px rgba(255, 154, 60, 0.2); }
+[data-rarity^="numinous_ineffability"] { --rar-pill: #090b18; --rar-pill-fg: #f4ebd3; --rar-accent: #eee4cc; --rar-fg: #faf5e9; --rar-line: #a99a79; --rar-bg: radial-gradient(ellipse at 50% 35%, #22243a, #0b0c1a 44%, #03040a); --rar-shadow: 0 0 7px #f9edc8, 0 0 22px #a89cc3; --rar-glow: 0 0 18px rgba(221, 206, 165, 0.45), 0 0 34px rgba(126, 117, 176, 0.3); }
+[data-rarity="devilish"] { --rar-pill: #120203; --rar-pill-fg: #ffd0c2; --rar-accent: #e0141e; --rar-fg: #ffd0c2; --rar-line: #8a0a10; --rar-bg: radial-gradient(ellipse 120% 90% at 50% 120%, rgba(255, 59, 26, 0.33), transparent 60%), linear-gradient(180deg, #0a0000, #240305 70%, #3d0508); --rar-shadow: 0 0 6px #ff3b1a, 0 0 14px rgba(224, 20, 30, 0.67), 0 1px 0 #000; --rar-glow: 0 0 18px rgba(224, 20, 30, 0.5); }
+[data-rarity="error"] { --rar-pill: #0b0612; --rar-pill-fg: #e9d5ff; --rar-accent: #8b3dff; --rar-fg: #e9d5ff; --rar-line: #5b21b6; --rar-bg: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 3px), linear-gradient(180deg, #05020a, #12061f 55%, #1d0833); --rar-shadow: -1px 0 #ff2e9a, 1px 0 #50dcff, 0 0 12px #8b3dff; --rar-glow: 0 0 18px rgba(139, 61, 255, 0.5); }
+
 /* ---------- footer ---------- */
 
 .footer {

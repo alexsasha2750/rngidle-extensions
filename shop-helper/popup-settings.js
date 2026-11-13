@@ -5,7 +5,7 @@ import { send } from './popup-format.js';
 
 const $ = id => document.getElementById(id);
 const el = {
-  theme: $('theme-choice'), compact: $('compact-toggle'), calm: $('calm-glitch'),
+  theme: $('theme-choice'), compact: $('compact-toggle'), calm: $('calm-glitch'), potionNumbers: $('potion-numbers'),
   desktop: $('chan-desktop'), sound: $('chan-sound'), flash: $('chan-flash'), volume: $('sound-volume'),
   testSound: $('test-sound'), testNotify: $('test-notify'),
   eventGlitch: $('event-glitch'), eventPurchase: $('event-purchase'), eventBlack: $('event-black'),
@@ -17,6 +17,7 @@ function render(p) {
   for (const radio of el.theme.querySelectorAll('input[type="radio"]')) radio.checked = radio.value === p.theme;
   el.compact.checked = p.compact;
   el.calm.checked = p.calmGlitch;
+  el.potionNumbers.checked = p.potionNumbers;
   el.desktop.checked = p.channels.desktop;
   el.sound.checked = p.channels.sound;
   el.flash.checked = p.channels.titleFlash;
@@ -34,6 +35,7 @@ el.theme.addEventListener('change', event => {
 });
 el.compact.addEventListener('change', () => void savePrefs({ compact: el.compact.checked }));
 el.calm.addEventListener('change', () => void savePrefs({ calmGlitch: el.calm.checked }));
+el.potionNumbers.addEventListener('change', () => void savePrefs({ potionNumbers: el.potionNumbers.checked }));
 el.desktop.addEventListener('change', () => void savePrefs({ channels: { desktop: el.desktop.checked } }));
 el.sound.addEventListener('change', () => {
   void savePrefs({ channels: { sound: el.sound.checked } });

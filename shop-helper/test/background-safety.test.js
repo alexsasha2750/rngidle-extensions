@@ -431,7 +431,7 @@ test('MARKET_STATUS reports both markets and the wallet, and degrades per endpoi
   h.world.market.items.push({ id: 'bad id' }, null);
   assert.deepEqual(await h.send({ type: 'MARKET_STATUS' }), {
     ok: true, tab: { open: true, signedIn: true }, wallet: 10_000_000,
-    shop: { open: true, eaten: false, endsAt: 5000, now: 4000 },
+    shop: { open: true, eaten: false, endsAt: 5000, now: 4000, bundle: null },
     black: { open: true, dealt: true, eaten: false, endsAt: 9000, now: 4000, items: [
       { id: 'market_item', price: 75, left: 1, bought: false }, { id: 'other_item', price: 40, left: 1, bought: false },
     ] },
@@ -454,4 +454,39 @@ test('MARKET_STATUS reports both markets and the wallet, and degrades per endpoi
   assert.equal(neither.ok, false);
   assert.match(neither.error, /HTTP 500/);
   assert.equal(h.sentOf('SITE_BUY').length + h.sentOf('SITE_BUY_BLACK_MARKET').length, 0, 'a status request never buys');
+});
+
+test('the bundle setting buys through the worker, keeps its reserve, and respects its filters', async () => {
+  const bundle = { enabled: true, uid: 'bundle:main', mode: 'restock', quantity: 3, reserve: 9_700_000 };
+  const h = await boot({ storage: { settings: { enabled: true, rules: [], bundle } } });
+  h.world.shop.bundle = { name: 'Rarity Bundle', left: 3, bought: 0, price: 150_000, value: 200_000, items: { rarity_aberration: 2 } };
+  await h.check();
+  assert.deepEqual(h.sentOf('SITE_BUY').map(message => [message.purchase.item, message.purchase.qty]), [['bundle', 1], ['bundle', 1]],
+    'with 10M and a 9.7M reserve only two 150K bundles fit');
+  assert.equal(h.world.shop.wallet.effective, 9_700_000, 'the reserve is untouched');
+  assert.equal(h.data.progress['bundle:main'].totalBought, 2);
+  assert.deepEqual(h.data.history.map(entry => [entry.source, entry.result, entry.price]), [['bundle', 'bought', 150000], ['bundle', 'bought', 150000]]);
+
+  const strict = await boot({ storage: { settings: { enabled: true, rules: [], bundle: { ...bundle, reserve: 0, maxPrice: 100_000 } } } });
+  strict.world.shop.bundle = { name: 'Rarity Bundle', left: 3, bought: 0, price: 150_000, value: 200_000, items: {} };
+  await strict.check();
+  assert.equal(strict.sentOf('SITE_BUY').length, 0, 'above the price limit');
+  assert.equal(strict.data.runStatus.state, 'watching');
+
+  const pickyItems = await boot({ storage: { settings: { enabled: true, rules: [], bundle: { ...bundle, reserve: 0, contains: ['luck_3'] } } } });
+  pickyItems.world.shop.bundle = { name: 'Rarity Bundle', left: 3, bought: 0, price: 150_000, value: 200_000, items: { luck_3: 5 } };
+  await pickyItems.check();
+  assert.equal(pickyItems.sentOf('SITE_BUY').length, 3, 'it holds the wanted item, so all three are bought');
+});
+
+test('an old “Any bundle” rule and the new setting never both buy', async () => {
+  const h = await boot({ storage: { settings: {
+    enabled: true,
+    rules: [{ uid: 'old', id: 'bundle', quantity: 3, mode: 'restock' }],
+    bundle: { enabled: false },
+  } } });
+  h.world.shop.bundle = { name: 'Bundle', left: 3, bought: 0, price: 100, value: 120, items: {} };
+  await h.check();
+  assert.equal(h.sentOf('SITE_BUY').length, 0, 'the new setting is off, so the migrated-away rule does nothing');
+  assert.equal(h.data.runStatus.message, 'Choose items to watch.');
 });

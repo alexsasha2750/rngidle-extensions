@@ -19,9 +19,33 @@ const time = value => {
   return number != null && number >= 0 ? number : null;
 };
 
+export function bundleStatus(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const price = finite(raw.price);
+  if (price == null || !(price > 0)) return null;
+  const items = {};
+  for (const [id, count] of Object.entries(raw.items && typeof raw.items === 'object' ? raw.items : {})) {
+    const amount = finite(count);
+    if (Object.keys(items).length < 40 && ITEM_ID.test(id) && Number.isSafeInteger(amount) && amount > 0) items[id] = amount;
+  }
+  const value = finite(raw.value);
+  const left = finite(raw.left);
+  const bought = finite(raw.bought);
+  return {
+    name: typeof raw.name === 'string' ? raw.name.slice(0, 80) : '',
+    emoji: typeof raw.emoji === 'string' ? raw.emoji.slice(0, 8) : '',
+    tier: typeof raw.tier === 'string' ? raw.tier.slice(0, 24) : '',
+    price,
+    value: value != null && value > 0 ? value : null,
+    left: Number.isSafeInteger(left) && left >= 0 ? left : null,
+    bought: Number.isSafeInteger(bought) && bought >= 0 ? bought : 0,
+    items,
+  };
+}
+
 export function shopStatus(data) {
   if (!data || typeof data !== 'object') return null;
-  return { open: Boolean(data.open), eaten: Boolean(data.eaten), endsAt: time(data.endsAt), now: time(data.now) };
+  return { open: Boolean(data.open), eaten: Boolean(data.eaten), endsAt: time(data.endsAt), now: time(data.now), bundle: bundleStatus(data.bundle) };
 }
 
 export function blackStatus(data) {

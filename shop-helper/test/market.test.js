@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blackStatus, MAX_MARKET_ITEMS, marketStatus, shopStatus, walletOf } from '../market.js';
+import { blackStatus, bundleStatus, MAX_MARKET_ITEMS, marketStatus, shopStatus, walletOf } from '../market.js';
 
 const tab = { signedIn: true };
 
@@ -23,7 +23,7 @@ test('both markets are trimmed to what the menu needs, with numbers checked', ()
     ok: true,
     tab: { open: true, signedIn: true },
     wallet: 1200,
-    shop: { open: true, eaten: false, endsAt: 5000, now: 4000 },
+    shop: { open: true, eaten: false, endsAt: 5000, now: 4000, bundle: null },
     black: {
       open: true, dealt: false, eaten: false, endsAt: null, now: null,
       items: [{ id: 'market_item', price: 75, left: 1, bought: false }, { id: 'cheap', price: null, left: null, bought: true }],
@@ -58,4 +58,15 @@ test('one failing endpoint only blanks its own part; both failing is an error', 
   assert.match(neither.error, /HTTP 500/);
   assert.deepEqual([neither.shop, neither.black, neither.tab], [null, null, { open: true, signedIn: true }]);
   assert.equal(marketStatus({ tab, shop: { ok: true, data: null }, black: undefined }).ok, false);
+});
+
+test('the shop’s current bundle is trimmed and validated', () => {
+  const raw = { type: 'rarity', name: 'Rarity Bundle', emoji: '☄️', tier: 'mythic', items: { rarity_aberration: 5, 'bad id!': 2, luck_3: 0, luck_4: 'x', rarity_otherworldly: '2' }, value: 2000, price: '1800', stock: 3, perPlayer: 1, bought: 0, left: 1, secret: 'x' };
+  assert.deepEqual(bundleStatus(raw), { name: 'Rarity Bundle', emoji: '☄️', tier: 'mythic', price: 1800, value: 2000, left: 1, bought: 0, items: { rarity_aberration: 5, rarity_otherworldly: 2 } });
+  assert.equal(bundleStatus(null), null);
+  assert.equal(bundleStatus({ name: 'No price' }), null, 'a bundle with no usable price is not shown');
+  assert.equal(bundleStatus({ price: -4 }), null);
+  assert.deepEqual(bundleStatus({ price: 10 }), { name: '', emoji: '', tier: '', price: 10, value: null, left: null, bought: 0, items: {} });
+  assert.equal(shopStatus({ open: true, bundle: raw }).bundle.price, 1800, 'it rides along with the shop status');
+  assert.equal(shopStatus({ open: true }).bundle, null);
 });

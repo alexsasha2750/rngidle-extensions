@@ -20,6 +20,10 @@
       "description": "Open or close the Shop Helper menu on rngidle.fun"
     }
   },
-  "content_scripts": [{ "matches": ["https://rngidle.fun/*"], "js": ["i18n.js", "sound.js", "calm.js", "content.js", "overlay.js"], "run_at": "document_idle" }],
+  "content_scripts": [
+    { "matches": ["https://rngidle.fun/*"], "js": ["i18n.js", "sound.js", "calm.js", "content.js", "overlay.js"], "run_at": "document_idle" },
+    { "matches": ["https://rngidle.fun/*"], "js": ["potion-numbers.js"], "run_at": "document_idle" },
+    { "matches": ["https://rngidle.fun/*"], "js": ["potion-numbers-main.js"], "run_at": "document_idle", "world": "MAIN" }
+  ],
   "web_accessible_resources": [{ "resources": ["popup.html", "locales/*/overlay.json"], "matches": ["https://rngidle.fun/*"] }]
 }

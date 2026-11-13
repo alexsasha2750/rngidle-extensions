@@ -13,7 +13,7 @@ The menu opens from the toolbar icon **and** inside the game itself, so it stays
 
 ## Install or update
 
-1. Download the extension ZIP from the [Releases page](https://github.com/alexsasha2750/rngidle-extensions/releases) and extract it. Alternatively, clone or download this repository.
+1. Download the extension ZIP from the [Releases page](https://github.com/alexsasha2750/rngidle-helper/releases) and extract it. Alternatively, clone or download this repository.
 2. Open `chrome://extensions` in Chrome 120 or later and turn on **Developer mode**.
 3. Choose **Load unpacked** and select the extracted `shop-helper` folder, which contains `manifest.json`. To update a previously unpacked copy, replace its files and click its **Reload** button in `chrome://extensions`, then **refresh any open RNGidle tabs** so the in-game menu updates too.
 4. Open [RNGidle](https://rngidle.fun/). A round button appears in the bottom-right corner; click it, or use the toolbar icon, to open the menu.

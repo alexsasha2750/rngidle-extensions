@@ -7,7 +7,7 @@ const T0 = Date.UTC(2026, 10, 13, 12);
 const zip = tag => ({ name: `RNGidle-Shop-Helper-${tag}.zip`, size: 142317, browser_download_url: `${DOWNLOAD_PREFIX}${tag}/RNGidle-Shop-Helper-${tag}.zip` });
 const release = (tag, over = {}) => ({
   tag_name: tag, name: `RNGidle Shop Helper ${tag}`, draft: false, prerelease: false, published_at: '2026-11-13T09:45:14Z',
-  html_url: `https://github.com/alexsasha2750/rngidle-extensions/releases/tag/${tag}`, body: `# RNGidle Shop Helper ${tag}\n\nWhat changed in ${tag}.`,
+  html_url: `https://github.com/alexsasha2750/rngidle-helper/releases/tag/${tag}`, body: `# RNGidle Shop Helper ${tag}\n\nWhat changed in ${tag}.`,
   assets: [zip(tag)], ...over,
 });
 const json = (body, init = {}) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' }, ...init });
@@ -87,7 +87,7 @@ test('a forced check finds the highest version from the manifests at each tag', 
   assert.equal(reply.state.status, 'available');
   assert.deepEqual(reply.state.latest, {
     version: '1.5.0', versionName: 'v1.5-beta', tag: 'v1.5-beta', prerelease: true,
-    url: 'https://github.com/alexsasha2750/rngidle-extensions/releases/tag/v1.5-beta',
+    url: 'https://github.com/alexsasha2750/rngidle-helper/releases/tag/v1.5-beta',
     notes: 'What changed in v1.5-beta.', publishedAt: '2026-11-13T09:45:14Z',
     asset: { name: 'RNGidle-Shop-Helper-v1.5-beta.zip', size: 142317, url: `${DOWNLOAD_PREFIX}v1.5-beta/RNGidle-Shop-Helper-v1.5-beta.zip` },
   });
@@ -239,7 +239,7 @@ test('two checks never run at once; everyone shares the one in flight', async ()
 });
 
 test('installing the update turns the stored "available" into "up to date"', async () => {
-  const stored = { status: 'available', checkedAt: T0, lastOk: T0, current: '1.4.0', latest: { version: '1.5.0', versionName: 'v1.5-beta', tag: 'v1.5-beta', prerelease: true, url: 'https://github.com/alexsasha2750/rngidle-extensions/releases/tag/v1.5-beta', notes: '', publishedAt: null, asset: null } };
+  const stored = { status: 'available', checkedAt: T0, lastOk: T0, current: '1.4.0', latest: { version: '1.5.0', versionName: 'v1.5-beta', tag: 'v1.5-beta', prerelease: true, url: 'https://github.com/alexsasha2750/rngidle-helper/releases/tag/v1.5-beta', notes: '', publishedAt: null, asset: null } };
   const h = harness({ version: '1.5.0', storage: { [STATE_KEY]: stored } });
   await h.settle();
   assert.equal(h.state().status, 'uptodate', 'settled as soon as the worker starts');
@@ -301,7 +301,7 @@ test('a download that finished while the worker slept is caught up on status', a
 test('a tampered or foreign download URL is refused', async () => {
   for (const url of [
     'https://evil.example/RNGidle-Shop-Helper.zip',
-    'https://github.com/someone/rngidle-extensions/releases/download/v1/a.zip',
+    'https://github.com/someone/rngidle-helper/releases/download/v1/a.zip',
     `${DOWNLOAD_PREFIX}../../../../evil/a.zip`,
   ]) {
     const h = harness({ world: { releases: [release('v1.5-beta', { assets: [{ name: 'RNGidle-Shop-Helper.zip', size: 1, browser_download_url: url }] })] } });

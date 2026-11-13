@@ -2,7 +2,7 @@
 // and the checks on every URL we hand to Chrome. No chrome.* APIs here, so it can be tested
 // (and run against the real GitHub) from Node. update-service.js wires it to the extension.
 
-export const REPO = 'alexsasha2750/rngidle-extensions';
+export const REPO = 'alexsasha2750/rngidle-helper';
 export const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=10`;
 export const RELEASE_PAGE_PREFIX = `https://github.com/${REPO}/releases/`;
 export const DOWNLOAD_PREFIX = `https://github.com/${REPO}/releases/download/`;

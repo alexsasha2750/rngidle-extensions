@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "RNGidle Shop Helper",
-  "version": "1.4.0",
-  "version_name": "v1.4",
+  "version": "1.4.1",
+  "version_name": "v1.4.1",
   "description": "Preview RNGidle numbers, buy selected shop and Black Market items, and try Glitch's trials, from a menu inside the game.",
   "minimum_chrome_version": "120",
   "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },

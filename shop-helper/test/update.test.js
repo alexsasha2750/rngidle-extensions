@@ -12,7 +12,7 @@ import { normalizeUiPrefs } from '../ui-prefs.js';
 const root = new URL('../', import.meta.url);
 const read = path => fs.readFileSync(new URL(path, root), 'utf8');
 const zip = (tag, name = `RNGidle-Shop-Helper-${tag}.zip`) => ({ name, size: 1234, browser_download_url: `${DOWNLOAD_PREFIX}${tag}/${name}` });
-const release = (tag, over = {}) => ({ tag_name: tag, name: `RNGidle Shop Helper ${tag}`, draft: false, prerelease: false, html_url: `https://github.com/alexsasha2750/rngidle-extensions/releases/tag/${tag}`, body: 'Notes', published_at: '2026-11-13T09:45:14Z', assets: [zip(tag)], ...over });
+const release = (tag, over = {}) => ({ tag_name: tag, name: `RNGidle Shop Helper ${tag}`, draft: false, prerelease: false, html_url: `https://github.com/alexsasha2750/rngidle-helper/releases/tag/${tag}`, body: 'Notes', published_at: '2026-11-13T09:45:14Z', assets: [zip(tag)], ...over });
 const latest = (version, over = {}) => ({ version, versionName: `v${version}`, tag: `v${version}`, prerelease: false, url: releasePageUrl(`v${version}`), notes: '', publishedAt: null, asset: { name: 'a.zip', size: 10, url: `${DOWNLOAD_PREFIX}v${version}/a.zip` }, ...over });
 
 test('versions compare as numbers, part by part', () => {
@@ -36,35 +36,35 @@ test('a release must declare a plain three-part version', () => {
 });
 
 test('only release files of this repository can be downloaded', () => {
-  assert.equal(isDownloadUrl('https://github.com/alexsasha2750/rngidle-extensions/releases/download/v1.31-beta/RNGidle-Shop-Helper-v1.31-beta.zip'), true);
+  assert.equal(isDownloadUrl('https://github.com/alexsasha2750/rngidle-helper/releases/download/v1.31-beta/RNGidle-Shop-Helper-v1.31-beta.zip'), true);
   for (const bad of [
-    'http://github.com/alexsasha2750/rngidle-extensions/releases/download/v1/a.zip',
-    'https://github.com/someone-else/rngidle-extensions/releases/download/v1/a.zip',
-    'https://github.com/alexsasha2750/rngidle-extensions-evil/releases/download/v1/a.zip',
-    'https://evil.example/alexsasha2750/rngidle-extensions/releases/download/v1/a.zip',
-    'https://github.com.evil.example/alexsasha2750/rngidle-extensions/releases/download/v1/a.zip',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/../../../evil/a.zip',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/%2e%2e/%2e%2e/x/a.zip',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/v1/a.exe',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/v1/deeper/a.zip',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/v1/a.zip?x=1',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/v1\\a.zip',
-    'https://github.com/alexsasha2750/rngidle-extensions/releases/download/v1/a b.zip',
-    'https://github.com:8443/alexsasha2750/rngidle-extensions/releases/download/v1/a.zip',
+    'http://github.com/alexsasha2750/rngidle-helper/releases/download/v1/a.zip',
+    'https://github.com/someone-else/rngidle-helper/releases/download/v1/a.zip',
+    'https://github.com/alexsasha2750/rngidle-helper-evil/releases/download/v1/a.zip',
+    'https://evil.example/alexsasha2750/rngidle-helper/releases/download/v1/a.zip',
+    'https://github.com.evil.example/alexsasha2750/rngidle-helper/releases/download/v1/a.zip',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/../../../evil/a.zip',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/%2e%2e/%2e%2e/x/a.zip',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/v1/a.exe',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/v1/deeper/a.zip',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/v1/a.zip?x=1',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/v1\\a.zip',
+    'https://github.com/alexsasha2750/rngidle-helper/releases/download/v1/a b.zip',
+    'https://github.com:8443/alexsasha2750/rngidle-helper/releases/download/v1/a.zip',
     'javascript:alert(1)', '', null, 42,
   ]) assert.equal(isDownloadUrl(bad), false, String(bad));
 });
 
 test('release pages, tags and manifest URLs stay inside the repository', () => {
-  assert.equal(isReleasePageUrl('https://github.com/alexsasha2750/rngidle-extensions/releases/tag/v1.31-beta'), true);
+  assert.equal(isReleasePageUrl('https://github.com/alexsasha2750/rngidle-helper/releases/tag/v1.31-beta'), true);
   assert.equal(isReleasePageUrl('https://github.com/alexsasha2750/other/releases/tag/v1'), false);
-  assert.equal(isReleasePageUrl('https://github.com/alexsasha2750/rngidle-extensions/releases/../../../x'), false);
+  assert.equal(isReleasePageUrl('https://github.com/alexsasha2750/rngidle-helper/releases/../../../x'), false);
   assert.equal(isReleasePageUrl('chrome://extensions'), false);
   assert.equal(isSafeTag('v1.31-beta'), true);
   assert.equal(isSafeTag('Pre-release'), true);
   for (const bad of ['', '../x', 'a/../b', 'v1 beta', 'v1?x', 'x'.repeat(101), null]) assert.equal(isSafeTag(bad), false, String(bad));
-  assert.equal(manifestUrl('v1.31-beta'), 'https://raw.githubusercontent.com/alexsasha2750/rngidle-extensions/v1.31-beta/shop-helper/manifest.json');
-  assert.equal(releasePageUrl('v1.1-alpha'), 'https://github.com/alexsasha2750/rngidle-extensions/releases/tag/v1.1-alpha');
+  assert.equal(manifestUrl('v1.31-beta'), 'https://raw.githubusercontent.com/alexsasha2750/rngidle-helper/v1.31-beta/shop-helper/manifest.json');
+  assert.equal(releasePageUrl('v1.1-alpha'), 'https://github.com/alexsasha2750/rngidle-helper/releases/tag/v1.1-alpha');
 });
 
 test('download file names are flattened and kept as .zip', () => {
@@ -162,7 +162,7 @@ test('a release is described from the API entry and the manifest at its tag', ()
   const info = releaseInfo(release('v1.31-beta', { prerelease: true, body: '# RNGidle Shop Helper v1.31-beta\n\nHello' }), { version: '1.3.1', version_name: 'v1.31-beta' });
   assert.deepEqual(info, {
     version: '1.3.1', versionName: 'v1.31-beta', tag: 'v1.31-beta', prerelease: true,
-    url: 'https://github.com/alexsasha2750/rngidle-extensions/releases/tag/v1.31-beta',
+    url: 'https://github.com/alexsasha2750/rngidle-helper/releases/tag/v1.31-beta',
     notes: 'Hello', publishedAt: '2026-11-13T09:45:14Z',
     asset: { name: 'RNGidle-Shop-Helper-v1.31-beta.zip', size: 1234, url: `${DOWNLOAD_PREFIX}v1.31-beta/RNGidle-Shop-Helper-v1.31-beta.zip` },
   });

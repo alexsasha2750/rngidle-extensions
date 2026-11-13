@@ -11,6 +11,8 @@
     const tabs = [...tablist.querySelectorAll('[role="tab"]')];
     const panelOf = (tab) => document.getElementById(tab.getAttribute("aria-controls"));
     let current = Math.max(0, tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true"));
+    tablist.style.setProperty("--n", String(tabs.length));
+    tablist.style.setProperty("--i", String(current));
 
     function select(index, { animate = true, persist = true } = {}) {
       index = Math.min(Math.max(index, 0), tabs.length - 1);
@@ -35,6 +37,7 @@
         }
       });
       tablist.dataset.index = String(index);
+      tablist.style.setProperty("--i", String(index));
       current = index;
       if (persist) storage.set({ [storageKey]: tabs[index].dataset.tab }).catch(() => {});
     }
@@ -86,6 +89,11 @@
     mainTabs.restore(saved.uiTab);
     subTabs.restore(saved.uiSubtab);
   }).catch(() => {});
+
+  // The in-game alert opens the menu on the Glitch tab by setting this key.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.uiTab?.newValue) mainTabs.restore(changes.uiTab.newValue);
+  });
 
   // Version label.
   const manifest = chrome.runtime.getManifest();

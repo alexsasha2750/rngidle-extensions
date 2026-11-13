@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="popup.css">
     <script src="popup.js" defer></script>
     <script src="popup-ui.js" defer></script>
+    <script type="module" src="popup-glitch.js"></script>
   </head>
   <body>
     <main class="app">
@@ -34,9 +35,13 @@
           <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M3 4h2l2.2 10.2a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.76L19.5 8H6.2"></path><circle cx="9.5" cy="19" r="1.4"></circle><circle cx="17" cy="19" r="1.4"></circle></svg>
           <span>Auto-buy</span>
         </button>
-        <button class="tab" id="tab-checker" type="button" role="tab" aria-selected="false" aria-controls="panel-checker" data-tab="checker" tabindex="-1">
+        <button class="tab" id="tab-glitch" type="button" role="tab" aria-selected="false" aria-controls="panel-glitch" data-tab="glitch" tabindex="-1">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M13 3 5 13.5h6L10 21l9-11.5h-6.2z"></path></svg>
+          <span>Glitch</span>
+        </button>
+        <button class="tab" id="tab-checker" type="button" role="tab" aria-selected="false" aria-controls="panel-checker" aria-label="Number checker" data-tab="checker" tabindex="-1">
           <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M9 4 7 20M17 4l-2 16M4 9h16M3.5 15h16"></path></svg>
-          <span>Number checker</span>
+          <span>Checker</span>
         </button>
       </nav>
 
@@ -183,6 +188,69 @@
           <div class="save-row" data-dirty="false">
             <p class="save-message" id="save-message" role="status" aria-live="polite">No unsaved changes</p>
             <button class="btn btn-primary save-button" id="save-button" type="button" disabled>Save settings</button>
+          </div>
+        </section>
+
+        <!-- ============ Glitch ============ -->
+        <section class="tab-panel" id="panel-glitch" role="tabpanel" aria-labelledby="tab-glitch" hidden>
+          <div class="stack">
+            <section class="card glitch-card" aria-labelledby="glitch-heading">
+              <div class="switch-row">
+                <div class="switch-copy">
+                  <div class="switch-title">
+                    <h2 id="glitch-heading">Glitch’s market</h2>
+                    <span class="run-state glitch-state" id="glitch-state">Checking…</span>
+                  </div>
+                  <p id="glitch-sub">Looking for Glitch…</p>
+                </div>
+                <span class="glitch-clock" id="glitch-clock" hidden>0:00</span>
+              </div>
+              <div class="chips status-chips" role="group" aria-label="Connection">
+                <span class="chip"><span class="status-dot" id="glitch-tab-dot" aria-hidden="true"></span><span id="glitch-tab-status">Game tab: checking…</span></span>
+                <span class="chip"><span class="status-dot" id="glitch-wallet-dot" aria-hidden="true"></span><span id="glitch-wallet">EP: unknown</span></span>
+              </div>
+              <p class="notice notice-info notice-inline" id="glitch-note"><strong>You answer his trials.</strong> Glitch quizzes you before every purchase and passing it buys the item. Keep the in-game menu open so a trial is not interrupted.</p>
+            </section>
+
+            <section class="card master" id="glitch-alert-card" aria-labelledby="glitch-alert-heading">
+              <div class="switch-row">
+                <div class="switch-copy">
+                  <h2 id="glitch-alert-heading">Alert me when Glitch visits</h2>
+                  <p id="glitch-alert-copy">Off · applies instantly</p>
+                </div>
+                <label class="switch" for="glitch-alert">
+                  <input id="glitch-alert" type="checkbox" aria-label="Alert me when Glitch visits" disabled>
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+              </div>
+            </section>
+
+            <section id="glitch-shop" class="glitch-shop" aria-labelledby="glitch-wares-heading">
+              <div class="section-head">
+                <div>
+                  <h2 id="glitch-wares-heading">Wares</h2>
+                  <p>Tick what you want. Ticked wares narrow the alert and form your trial queue.</p>
+                </div>
+                <span class="count-badge" id="glitch-selected-count">0 ticked</span>
+              </div>
+              <p class="empty-state" id="glitch-message" role="status">Loading…</p>
+              <div class="catalog-list" id="glitch-list" aria-live="polite"></div>
+              <div class="glitch-actions">
+                <button class="btn btn-primary" id="glitch-start" type="button" disabled>Take the trial</button>
+                <p class="fine-print" id="glitch-start-hint" role="status"></p>
+              </div>
+            </section>
+
+            <section class="card trial" id="glitch-trial" aria-labelledby="glitch-trial-heading" hidden>
+              <div class="trial-head">
+                <h2 id="glitch-trial-heading">Glitch’s trial</h2>
+                <span class="trial-ware" id="glitch-trial-ware"></span>
+              </div>
+              <ol class="trial-steps" id="glitch-trial-steps" aria-label="Progress"></ol>
+              <div id="glitch-trial-body" class="trial-body" aria-live="polite"></div>
+              <div class="trial-actions" id="glitch-trial-actions"></div>
+              <ul class="trial-results" id="glitch-trial-results" aria-label="Results so far"></ul>
+            </section>
           </div>
         </section>
 

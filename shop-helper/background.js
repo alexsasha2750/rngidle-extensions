@@ -1,4 +1,5 @@
 import { chooseBlackMarketPurchase, choosePurchase, shopKey } from './logic.js';
+import { createGlitchService, GLITCH_ALARM } from './glitch.js';
 
 const ALARM = 'check-shop';
 const storage = chrome.storage.local;
@@ -9,6 +10,10 @@ const blackCatalogPromise = fetch(chrome.runtime.getURL('black-catalog.json'))
   .then(r => r.ok ? r.json() : [])
   .then(data => Array.isArray(data) ? data : [])
   .catch(() => []);
+const glitchNamesPromise = fetch(chrome.runtime.getURL('glitch-catalog.json'))
+  .then(r => r.ok ? r.json() : [])
+  .then(data => new Map((Array.isArray(data) ? data : []).filter(item => item && typeof item.id === 'string').map(item => [item.id, String(item.name || item.id)])))
+  .catch(() => new Map());
 
 async function status(state, message, extra = {}) {
   await storage.set({ runStatus: { state, message, checkedAt: Date.now(), ...extra } });
@@ -230,11 +235,17 @@ function check() {
 async function ensureAlarm() {
   if (!(await chrome.alarms.get(ALARM))) await chrome.alarms.create(ALARM, { periodInMinutes: 1 });
 }
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) void check(); });
-chrome.runtime.onInstalled.addListener(() => { void ensureAlarm(); });
-chrome.runtime.onStartup.addListener(() => { void ensureAlarm(); void check(); });
+const glitch = createGlitchService({ storage, getTab, site, activity, loadNames: () => glitchNamesPromise });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === ALARM) void check();
+  else if (alarm.name === GLITCH_ALARM) void glitch.watch().catch(() => {});
+});
+chrome.runtime.onInstalled.addListener(() => { void ensureAlarm(); void glitch.syncAlarm().catch(() => {}); });
+chrome.runtime.onStartup.addListener(() => { void ensureAlarm(); void glitch.syncAlarm().catch(() => {}); void check(); });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'SITE_READY') { void check(); return; }
+  const glitchReply = glitch.handle(message);
+  if (glitchReply) { glitchReply.then(sendResponse); return true; }
   if (message?.type === 'CLEAR_BLACK_MARKET_UNCERTAINTY') {
     (async () => {
       if (running) await running;

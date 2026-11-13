@@ -12,7 +12,7 @@
   const frameUrl = chrome.runtime.getURL("popup.html?embedded=1");
   const frameOrigin = new URL(frameUrl).origin;
 
-  const state = { launcher: true, open: false, enabled: false, run: "" };
+  const state = { launcher: true, open: false, enabled: false, run: "", alert: null, seen: "" };
   let frame = null;
   let disposed = false;
 
@@ -47,6 +47,24 @@
 
       .launcher::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgba(52, 211, 153, 0.6); opacity: 0; pointer-events: none; }
       .launcher[data-status="good"]::before { animation: ring 2.6s ease-out infinite; }
+      .launcher::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 3px solid #e879f9; opacity: 0; pointer-events: none; }
+      .launcher[data-alert="true"]::after { animation: ring-alert 1.4s ease-out infinite; }
+
+      .bubble {
+        position: fixed; right: 18px; bottom: 84px; width: 270px; max-width: calc(100vw - 24px); padding: 12px 14px;
+        border-radius: 16px; color: #eef0ff; background: #151833; border: 1px solid rgba(217, 70, 239, 0.6);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 36px rgba(217, 70, 239, 0.3);
+        font: 500 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        transform-origin: calc(100% - 28px) 100%; opacity: 0; visibility: hidden; transform: translateY(10px) scale(0.9); pointer-events: none;
+        transition: opacity 0.2s, transform 0.45s var(--spring), visibility 0s 0.45s;
+      }
+      .bubble[data-show="true"] { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity 0.2s, transform 0.55s var(--spring), visibility 0s; }
+      .bubble strong { display: block; margin-bottom: 2px; font-size: 13.5px; color: #f5d0fe; }
+      .bubble p { margin: 0 0 10px; color: #c5c9e6; }
+      .bubble-actions { display: flex; gap: 8px; }
+      .bubble button { flex: 1; min-height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.18); font: 650 12.5px ui-sans-serif, system-ui, sans-serif; color: #eef0ff; background: rgba(255, 255, 255, 0.08); cursor: pointer; }
+      .bubble button.go { border-color: transparent; background: linear-gradient(135deg, #d946ef, #8b6cff); color: #fff; }
+      .bubble button:focus-visible { outline: 2px solid #bde9ff; outline-offset: 2px; }
 
       .dot { position: absolute; top: 1px; right: 1px; width: 15px; height: 15px; border-radius: 50%; border: 2.5px solid #0b0c1d; background: #737aa3; opacity: 0; transform: scale(0.3); transition: background 0.3s, opacity 0.3s, transform 0.4s var(--spring); }
       .launcher[data-status="good"] .dot, .launcher[data-status="warn"] .dot, .launcher[data-status="bad"] .dot { opacity: 1; transform: none; }
@@ -83,11 +101,13 @@
       @media (max-width: 480px) {
         .launcher { right: 14px; bottom: 14px; }
         .panel { right: 12px; left: 12px; width: auto; max-width: none; bottom: 78px; }
+        .bubble { right: 12px; bottom: 78px; }
       }
       @media (max-height: 520px) { .panel { bottom: 12px; right: 84px; height: calc(100vh - 24px); } }
 
       @keyframes launcher-in { from { opacity: 0; transform: scale(0.3) translateY(24px); } to { opacity: 1; transform: none; } }
       @keyframes ring { 0% { transform: scale(0.9); opacity: 0.75; } 100% { transform: scale(1.45); opacity: 0; } }
+      @keyframes ring-alert { 0% { transform: scale(0.95); opacity: 0.95; } 100% { transform: scale(1.7); opacity: 0; } }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0ms !important; }
       }
@@ -107,16 +127,27 @@
         <span class="tip"></span>
       </button>
       <div class="panel" id="panel" role="dialog" aria-label="RNGidle Shop Helper" data-open="false" inert></div>
+      <div class="bubble" role="status" data-show="false" inert>
+        <strong>Glitch is here</strong>
+        <p></p>
+        <div class="bubble-actions"><button class="go" type="button">Open</button><button class="later" type="button">Dismiss</button></div>
+      </div>
     </div>`;
 
   const scene = root.querySelector(".scene");
   const launcher = root.querySelector(".launcher");
   const panel = root.querySelector(".panel");
   const tip = root.querySelector(".tip");
+  const bubble = root.querySelector(".bubble");
+  const bubbleText = bubble.querySelector("p");
 
   // Keep keystrokes made on our button from reaching the game's own shortcuts.
   for (const type of ["keydown", "keyup", "keypress"]) {
     host.addEventListener(type, (event) => event.stopPropagation());
+  }
+
+  function cleanAlert(value) {
+    return value && typeof value.key === "string" && Array.isArray(value.ids) && value.ids.length ? value : null;
   }
 
   function ensureFrame() {
@@ -143,7 +174,18 @@
     launcher.tabIndex = state.launcher ? 0 : -1;
     launcher.setAttribute("aria-expanded", String(open));
     launcher.setAttribute("aria-label", open ? "Hide RNGidle Shop Helper" : "Open RNGidle Shop Helper");
-    tip.textContent = `Shop Helper ${versionLabel} · auto-buy ${state.enabled ? "on" : "off"}`;
+    const alerting = state.launcher && !!state.alert;
+    launcher.dataset.alert = String(alerting);
+    tip.textContent = alerting
+      ? "Glitch has something you want"
+      : `Shop Helper ${versionLabel} · auto-buy ${state.enabled ? "on" : "off"}`;
+    const showBubble = alerting && !open && state.alert.key !== state.seen;
+    if (showBubble) {
+      const count = state.alert.ids.length;
+      bubbleText.textContent = count === 1 ? "One of the wares you want is on his shelf." : `${count} of the wares you want are on his shelf.`;
+    }
+    bubble.dataset.show = String(showBubble);
+    bubble.inert = !showBubble;
     panel.dataset.open = String(open);
     panel.inert = !open;
   }
@@ -160,6 +202,15 @@
   }
 
   launcher.addEventListener("click", () => setOpen(!state.open));
+  bubble.querySelector(".later").addEventListener("click", () => {
+    state.seen = state.alert?.key ?? "";
+    render();
+  });
+  bubble.querySelector(".go").addEventListener("click", () => {
+    state.seen = state.alert?.key ?? "";
+    save({ uiTab: "glitch" });
+    setOpen(true);
+  });
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.open) {
       setOpen(false);
@@ -196,6 +247,7 @@
       }
     }
     if (changes.uiOpen) state.open = changes.uiOpen.newValue === true;
+    if (changes.glitchAlert) state.alert = cleanAlert(changes.glitchAlert.newValue);
     if (changes.settings) state.enabled = changes.settings.newValue?.enabled === true;
     if (changes.runStatus) state.run = changes.runStatus.newValue?.state ?? "";
     render();
@@ -203,7 +255,8 @@
 
   document.documentElement.append(host);
 
-  chrome.storage.local.get(["uiLauncher", "uiOpen", "settings", "runStatus"]).then((saved) => {
+  chrome.storage.local.get(["uiLauncher", "uiOpen", "settings", "runStatus", "glitchAlert"]).then((saved) => {
+    state.alert = cleanAlert(saved.glitchAlert);
     state.launcher = saved.uiLauncher !== false;
     state.open = state.launcher && saved.uiOpen === true;
     state.enabled = saved.settings?.enabled === true;

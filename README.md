@@ -1,11 +1,12 @@
 # RNGidle Shop Helper
 
-An experimental Chrome extension for [RNGidle](https://rngidle.fun/) with two tools in one menu:
+An experimental Chrome extension for [RNGidle](https://rngidle.fun/) with three tools in one menu:
 
 - **Auto-buy** automatically buys selected items and bundles from Glim's shop, and items from the Black Market, while an RNGidle tab is open.
+- **Glitch** shows Glitch's shelf, lets you pick what to try for, presents his timed trial questions for you to answer, and buys the ware once the game confirms you passed. It also can alert you when he visits.
 - **Number checker** previews the badges and EP a number would earn, without rolling.
 
-The menu opens from the toolbar icon **and** inside the game itself, so it stays open while you play. Glitch and Halloween shops are not supported.
+The menu opens from the toolbar icon **and** inside the game itself, so it stays open while you play. The Halloween shop is not supported.
 
 > **Account risk:** RNGidle's [terms](https://rngidle.fun/terms) prohibit bots, scripts, auto-clickers, and tools that play for you. Automatic buying may violate those terms and could result in a progress reset or ban. Use only if you accept that risk.
 
@@ -20,9 +21,10 @@ The current version is shown at the top of the menu.
 
 ## The menu
 
-The menu has two tabs. Your last tab, and whether the in-game menu is open, are remembered.
+The menu has three tabs. Your last tab, and whether the in-game menu is open, are remembered.
 
 - **Auto-buy** has a main **Automatic purchases** switch with connection status, then two sections: **Glim's shop** and **Black Market**. Changes apply when you choose **Save settings**.
+- **Glitch** shows his shelf and visit timer, with an optional alert and a trial you answer yourself (see below).
 - **Number checker** previews a number; tap an example to try it.
 
 ### In-game menu
@@ -45,6 +47,17 @@ The extension starts paused. It checks about once a minute while Chrome is runni
 
 Settings, status, and purchase activity are stored locally in the browser. The extension uses the game's existing signed-in session from its open tab and requests access only to `rngidle.fun`. It does not ask for or store credentials.
 
+## Glitch
+
+Glitch quizzes you before every purchase, and the game's server checks the answers against a time limit. The extension does **not** answer for you: it shows each question, you pick or type the answer, and it sends that to the game. Only when the game reports that you passed does the extension send the purchase.
+
+- Open the **Glitch** tab (with an RNGidle tab open and signed in) to see his shelf. Wares show as available, sold out, already bought, too expensive, or not on his shelf. Tick the wares you want, then choose **Take the trial**; with several ticked, each gets its own trial in turn.
+- A wrong or late answer ends that trial and shows the correct answer. Glitch makes you rest briefly before you can try again; you can also skip a ware or stop the queue.
+- Keep the menu open during a trial. Closing it mid-way abandons the trial; a trial you already passed is bought straight away.
+- **Alert me when Glitch visits** (off by default) puts a badge on the toolbar icon and a pulsing ring and prompt on the in-game button when a ware you ticked (or any buyable ware, if none are ticked) is on his shelf. It checks about every 30 seconds while Chrome is running and an RNGidle tab is open.
+- If a purchase reply is lost, the extension retries with the same request ID so you are not charged twice. If the outcome stays unknown, it stops the queue and tells you to check your inventory.
+- The extension refuses to start a trial when you are signed out, when a different account than the one set up for auto-buy is signed in, or when the game's own button would be disabled (away, sold out, bought, or too expensive).
+
 ## Number checker
 
 With an RNGidle tab open, enter a number and choose **Check** to preview its badges and EP. For example, try `123`, `-12.5`, `3+4i`, `1+2i+3j+4k`, `∅`, or `NaN` (up to 250 characters). This uses the game's own live scoring engine in the game tab; it does not perform a roll or award EP. Results reflect that engine and can change if the game updates.
@@ -53,7 +66,7 @@ The checker uses the game's JavaScript in the page rather than redistributing it
 
 ## Checks
 
-Run `npm test` from the `shop-helper` folder with Node.js to exercise purchase planning, the background flow, and the extension package using simulated responses; no live purchases are made by these tests. Live signed-in purchases have not been verified by these tests.
+Run `npm test` from the `shop-helper` folder with Node.js to exercise purchase planning, the Glitch trial and purchase flow, the background flow, and the extension package using simulated responses; no live purchases are made by these tests. Live signed-in purchases have not been verified by these tests, and the Glitch flow has so far only been exercised against a simulated game server.
 
 ## License and attribution
 

@@ -32,14 +32,15 @@ test('the in-game menu is wired up and limited to the game site', () => {
   assert.deepEqual(shared.resources, ['popup.html']);
   assert.deepEqual(shared.matches, ['https://rngidle.fun/*']);
   assert.ok(read('overlay.js').includes('popup.html?embedded=1'));
+  assert.ok(read('overlay.js').includes('glitchAlert'), 'the in-game button should react to Glitch alerts');
 });
 
 test('popup.html has unique ids and every id the scripts look up', () => {
   const html = read('popup.html');
   const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
   assert.equal(new Set(ids).size, ids.length, 'duplicate ids in popup.html');
-  for (const file of ['popup.js', 'popup-ui.js']) {
-    for (const [, id] of read(file).matchAll(/getElementById\("([^"]+)"\)/g)) {
+  for (const file of ['popup.js', 'popup-ui.js', 'popup-glitch.js']) {
+    for (const [, id] of read(file).matchAll(/(?:getElementById|\$)\(["']([^"']+)["']\)/g)) {
       assert.ok(ids.includes(id), `${file} looks up #${id}, which popup.html does not define`);
     }
   }
@@ -54,7 +55,7 @@ test('popup.html loads only packaged scripts and styles', () => {
 });
 
 test('the menu never uses blocking dialogs or HTML injection', () => {
-  for (const file of ['popup.js', 'popup-ui.js', 'overlay.js']) {
+  for (const file of ['popup.js', 'popup-ui.js', 'popup-glitch.js', 'glitch.js', 'overlay.js']) {
     const source = read(file).replace(/\/\/.*$/gm, '');
     assert.ok(!/\b(?:alert|confirm|prompt)\(/.test(source), `${file} uses a blocking dialog`);
     assert.ok(!/\.(?:innerHTML|outerHTML)\s*=/.test(source.replace(/root\.innerHTML = `[\s\S]*?`;/, '')), `${file} assigns HTML`);
